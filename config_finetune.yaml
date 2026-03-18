@@ -1,11 +1,14 @@
 # dataset creation parameters
 dataset_parameters:
   dataset_folder    : 'database/datasets'
-  temporal_res      : 120
-  train_dataset_name: 'dijkring_15'
+  # temporal_res      : 120
+  # train_dataset_name: 'dijkring_15'
+  temporal_res      : 60
+  train_dataset_name: 'sfincs_marg'
   train_size        : 1
   val_prcnt         : 0
-  test_dataset_name : 'dijkring_15'
+  # test_dataset_name : 'dijkring_15'
+  test_dataset_name : 'sfincs_marg'
   seed              : 0
 
 # Scaler options: null, 'minmax', 'minmax_neg', or 'standard'
