@@ -1,0 +1,11 @@
+{
+"type": "FeatureCollection",
+"name": "src_points_locs_Marg_reprojected",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::32632" } },
+"features": [
+{ "type": "Feature", "properties": { "fid": 8, "id": 7, "name": "Müsch", "easting": 345552.7, "northing": 5583999.0 }, "geometry": { "type": "Point", "coordinates": [ 345220.850975928653497, 5583766.787630608305335 ] } },
+{ "type": "Feature", "properties": { "fid": 6, "id": 4, "name": "Kirmutscheid", "easting": 346396.6, "northing": 5582150.0 }, "geometry": { "type": "Point", "coordinates": [ 346313.912111239973456, 5582100.558303313329816 ] } },
+{ "type": "Feature", "properties": { "fid": 4, "id": 2, "name": "Denn", "easting": 356729.2, "northing": 5594385.6 }, "geometry": { "type": "Point", "coordinates": [ 356926.70905023009982, 5594304.264390670694411 ] } },
+{ "type": "Feature", "properties": { "fid": 3, "id": 1, "name": "Kreuzberg", "easting": 355899.8, "northing": 5597311.0 }, "geometry": { "type": "Point", "coordinates": [ 355971.428730294981506, 5597633.04889018740505 ] } }
+]
+}

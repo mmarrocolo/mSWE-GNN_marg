@@ -2,10 +2,10 @@
 dataset_parameters:
   dataset_folder    : 'database/datasets'
   temporal_res      : 120
-  train_dataset_name: 'multiscale_mesh_dataset'
+  train_dataset_name: 'ahr_river'
   train_size        : 80
   val_prcnt         : 0.25
-  test_dataset_name : 'multiscale_mesh_dataset'
+  test_dataset_name : 'ahr_river'
   seed              : 381
 
 # Scaler options: null, 'minmax', 'minmax_neg', or 'standard'

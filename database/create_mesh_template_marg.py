@@ -226,18 +226,22 @@ def create_mesh_template_pkl(
     finest_mesh._import_DEM(dem_path)
     print(f"   Interpolated DEM range (finest): {finest_mesh.DEM.min():.2f} to {finest_mesh.DEM.max():.2f} m")
 
-    # Initialize one default BC edge/face in the finest mesh.
+    # Initialize BC edge/face attributes from all detected boundary edges.
     if not hasattr(finest_mesh, 'boundary_edges') or len(finest_mesh.boundary_edges) == 0:
         raise RuntimeError('Could not infer boundary edges to initialize BC attributes.')
 
-    finest_mesh.edge_index_BC = np.array([finest_mesh.boundary_edges[0]], dtype=int)
-    finest_mesh.edge_BC = np.array([
-        np.where(
-            ((finest_mesh.edge_index_BC[0] == finest_mesh.edge_index.T).sum(1) == 2) |
-            ((finest_mesh.edge_index_BC[0][::-1] == finest_mesh.edge_index.T).sum(1) == 2)
-        )[0][0]
-    ], dtype=int)
-    if hasattr(finest_mesh, 'edge_type') and finest_mesh.edge_type.shape[0] > finest_mesh.edge_BC[0]:
+    finest_mesh.edge_index_BC = np.asarray(finest_mesh.boundary_edges, dtype=int)
+    edge_bc_idx = []
+    for edge in finest_mesh.edge_index_BC:
+        idx = np.where(
+            ((edge == finest_mesh.edge_index.T).sum(1) == 2)
+            | ((edge[::-1] == finest_mesh.edge_index.T).sum(1) == 2)
+        )[0]
+        if len(idx) > 0:
+            edge_bc_idx.append(idx[0])
+
+    finest_mesh.edge_BC = np.asarray(edge_bc_idx, dtype=int)
+    if hasattr(finest_mesh, 'edge_type') and finest_mesh.edge_BC.size > 0:
         finest_mesh.edge_type[finest_mesh.edge_BC] = 2
 
     finest_mesh.face_BC = find_face_BC(finest_mesh)

@@ -1576,7 +1576,35 @@ def convert_mesh_to_pyg(netcdf_file, DEM_file, BC, polygon_file=None, type_BC=2,
     if with_multiscale:
         data.node_BC = data.node_BC[:len(mesh.ghost_cells_ids)//number_of_multiscales] # select BC only at the finest scale
         data.edge_BC_length = data.edge_BC_length[:len(mesh.ghost_cells_ids)//number_of_multiscales] # select BC+edge only at the finest scale
-    data.BC = torch.FloatTensor(BC).unsqueeze(0).repeat(len(data.node_BC), 1, 1) # This repeats the same BC
+    #start new code marg
+    # data.BC = torch.FloatTensor(BC).unsqueeze(0).repeat(len(data.node_BC), 1, 1) # This repeats the same BC
+    # BC can be provided as:
+    # 1) [T, 2] -> [time, discharge] replicated to all BC nodes
+    # 2) [T, 1+N] -> [time, q_1, ..., q_N] mapped to BC nodes if N matches node_BC size
+    BC = np.asarray(BC)
+    if BC.ndim != 2 or BC.shape[1] < 2:
+        raise ValueError("BC must be a 2D array with at least two columns: [time, discharge].")
+
+    discharge_values = BC[:, 1:]
+    n_time = discharge_values.shape[0]
+    n_bc_nodes = len(data.node_BC)
+
+    if discharge_values.shape[1] == 1:
+        node_discharge = np.repeat(discharge_values.T, n_bc_nodes, axis=0)
+    elif discharge_values.shape[1] == n_bc_nodes:
+        node_discharge = discharge_values.T
+    else:
+        print(
+            f"Warning: Hydrograph has {discharge_values.shape[1]} discharge columns, but there are {n_bc_nodes} BC nodes. "
+            "Using the mean discharge across provided series for all BC nodes."
+        )
+        mean_q = discharge_values.mean(axis=1, keepdims=True)
+        node_discharge = np.repeat(mean_q.T, n_bc_nodes, axis=0)
+
+    BC_tensor = np.zeros((n_bc_nodes, n_time, 2), dtype=np.float32)
+    BC_tensor[:, :, 1] = node_discharge
+    data.BC = torch.FloatTensor(BC_tensor)
+    #end new code marg
     data.type_BC = torch.tensor(type_BC, dtype=torch.int)
 
     return data
@@ -1610,7 +1638,12 @@ def create_mesh_dataset(dataset_folder, n_sim, start_sim=1,
         DEM_file = f"{dataset_folder}\\DEM\\DEM_{i}.xyz"
         hydrograph_file = f"{dataset_folder}\\Hydrograph\\Hydrograph_{i}.txt"
         polygon_file = f"{dataset_folder}\\Geometry\\Polygon_{i}.pol"
+        #start new code marg
+        # BC = np.loadtxt(hydrograph_file)
         BC = np.loadtxt(hydrograph_file)
+        if BC.ndim == 1:
+            BC = BC.reshape(-1, 2)
+        #end new code marg
         BC[:,0] /= 60 # convert to minutes
         
         data = convert_mesh_to_pyg(netcdf_file, DEM_file, BC, polygon_file, type_BC=2,
