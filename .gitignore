@@ -8,3 +8,7 @@ __pycache__
 *.pyc
 lightning_logs
 wandb
+
+# Large GIS and visualization files (exceed GitHub 100MB limit)
+*.tif
+*.gif
