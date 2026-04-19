@@ -2,10 +2,10 @@
 dataset_parameters:
   dataset_folder    : 'database/datasets'
   temporal_res      : 120
-  train_dataset_name: 'ahr_river'
+  train_dataset_name: 'ahr_river_v03_marg_additionalsrc_cutpolygon'
   train_size        : 80
   val_prcnt         : 0.25
-  test_dataset_name : 'ahr_river'
+  test_dataset_name : 'ahr_river_v03_marg_additionalsrc_cutpolygon'
   seed              : 381
 
 # Scaler options: null, 'minmax', 'minmax_neg', or 'standard'

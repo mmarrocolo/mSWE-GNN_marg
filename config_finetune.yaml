@@ -4,11 +4,11 @@ dataset_parameters:
   # temporal_res      : 120
   # train_dataset_name: 'dijkring_15'
   temporal_res      : 60
-  train_dataset_name: 'sfincs_marg'
+  train_dataset_name: 'ahr_river_v03_marg_additionalsrc_cutpolygon'
   train_size        : 1
   val_prcnt         : 0
   # test_dataset_name : 'dijkring_15'
-  test_dataset_name : 'sfincs_marg'
+  test_dataset_name : 'ahr_river_v03_marg_additionalsrc_cutpolygon'
   seed              : 0
 
 # Scaler options: null, 'minmax', 'minmax_neg', or 'standard'
