@@ -69,15 +69,18 @@ def main(config):
                        'trainer_options': trainer_options, 
                        'temporal_test_dataset_parameters': temporal_test_dataset_parameters}
 
-    model = plmodule.load_from_checkpoint(config.saved_model, map_location=device, **plmodule_kwargs)
-    model = plmodule.model.to(device)    
+    plmodule = LightningTrainer.load_from_checkpoint(config.saved_model, map_location=device, **plmodule_kwargs)
+    model = plmodule.model.to(device)
 
-    # Numerical simulation times
+    # Numerical simulation times (not available for all datasets)
     maximum_time = test_dataset[0].WD.shape[1]
-    numerical_times = get_numerical_times(test_dataset_name+'_test', 
-                    test_size, temporal_res, maximum_time, 
-                    **temporal_test_dataset_parameters,
-                    overview_file='database/overview.csv')
+    try:
+        numerical_times = get_numerical_times(test_dataset_name+'_test',
+                        test_size, temporal_res, maximum_time,
+                        **temporal_test_dataset_parameters,
+                        overview_file='database/overview.csv')
+    except (ValueError, KeyError):
+        numerical_times = None
 
     # Define trainer
     trainer = L.Trainer(accelerator="auto", devices='auto')
@@ -88,31 +91,35 @@ def main(config):
     prediction_times = prediction_times/len(temporal_test_dataset)
     predicted_rollout = [item for roll in predicted_rollout for item in roll]
 
-    spatial_analyser = SpatialAnalysis(predicted_rollout, prediction_times, 
+    spatial_analyser = SpatialAnalysis(predicted_rollout, prediction_times,
                                    test_dataset, **temporal_test_dataset_parameters)
-    
+
     rollout_loss = spatial_analyser._get_rollout_loss(type_loss='MAE')
     model_times = spatial_analyser.prediction_times
-                                        
+
     print('test roll loss WD:',rollout_loss.mean(0)[0].item())
     print('test roll loss V:',rollout_loss.mean(0)[1:].mean().item())
 
-    # Speed up
-    avg_speedup, std_speedup = get_speed_up(numerical_times, model_times)
-
     print(f'test CSI_005: {spatial_analyser._get_CSI(water_threshold=0.05).nanmean().item()}')
     print(f'test CSI_03: {spatial_analyser._get_CSI(water_threshold=0.3).nanmean().item()}')
-    print(f'mean speed-up: {avg_speedup:.2f}\nstd speed-up: {std_speedup:.3f}')
+
+    # Speed up (only if numerical simulation times are available)
+    if numerical_times is not None:
+        avg_speedup, std_speedup = get_speed_up(numerical_times, model_times)
+        print(f'mean speed-up: {avg_speedup:.2f}\nstd speed-up: {std_speedup:.3f}')
     
     print('Testing finished!')
 
 if __name__ == '__main__':
-    # Read configuration file with parameters
-    cfg = read_config('config_finetune.yaml')
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', default='config_finetune.yaml')
+    args = parser.parse_args()
 
-    wandb_logger = WandbLogger(
-        mode='disabled',
-        config=cfg)
+    cfg = read_config(args.config)
+
+    wandb.init(mode='disabled', config=cfg)
+    wandb_logger = WandbLogger()
 
     fix_dict_in_config(wandb)
 

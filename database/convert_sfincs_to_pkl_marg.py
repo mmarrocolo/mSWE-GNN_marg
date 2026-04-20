@@ -22,7 +22,7 @@ import pickle
 import numpy as np
 import torch
 import xarray as xr
-from scipy.interpolate import griddata
+from scipy.interpolate import griddata, interp1d
 
 
 def load_single_data_object(template_pkl_path):
@@ -111,7 +111,40 @@ def interpolate_time_series(source_points, grid_3d, target_points, label):
     return out
 
 
-def build_output_data(template_data, WD, VX, VY):
+def parse_src_file(src_path):
+    """Read SFINCS source file: returns array of shape [n_src, 2] (x, y) in model CRS."""
+    pts = []
+    with open(src_path) as f:
+        for line in f:
+            parts = line.strip().split()
+            if len(parts) >= 2:
+                try:
+                    pts.append([float(parts[0]), float(parts[1])])
+                except ValueError:
+                    continue
+    return np.array(pts, dtype=np.float64)
+
+
+def parse_dis_file(dis_path):
+    """Read SFINCS discharge file (time[s], q1, q2, ...).
+    Returns (time_s [T], discharge [T, n_src]).
+    """
+    data = np.loadtxt(dis_path)
+    time_s = data[:, 0]
+    discharge = data[:, 1:].astype(np.float32)
+    return time_s, discharge
+
+
+def find_nearest_mesh_nodes(source_xy, face_xy):
+    """Return indices of nearest face-center nodes for each source point."""
+    from scipy.spatial import cKDTree
+    tree = cKDTree(face_xy)
+    _, indices = tree.query(source_xy)
+    return indices.astype(np.int32)
+
+
+def build_output_data(template_data, WD, VX, VY,
+                      map_times_s=None, src_xy=None, dis_times_s=None, discharge=None):
     data = copy.deepcopy(template_data)
 
     num_nodes = data.num_nodes if isinstance(data.num_nodes, int) else int(data.num_nodes)
@@ -123,11 +156,35 @@ def build_output_data(template_data, WD, VX, VY):
     data.VX = torch.FloatTensor(VX)
     data.VY = torch.FloatTensor(VY)
 
-    # Rebuild BC tensor horizon to match new time length.
     time_steps = WD.shape[1]
-    if hasattr(data, "node_BC"):
-        n_bc = int(data.node_BC.shape[0])
-        data.BC = torch.zeros((n_bc, time_steps, 2), dtype=torch.float32)
+
+    if src_xy is not None and dis_times_s is not None and discharge is not None and map_times_s is not None:
+        # Find nearest mesh node for each source point
+        face_xy = np.asarray(data.mesh.face_xy)
+        node_bc_indices = find_nearest_mesh_nodes(src_xy, face_xy)
+        n_bc = len(node_bc_indices)
+        print(f"  Mapped {n_bc} source points to mesh nodes: {node_bc_indices}")
+
+        # Interpolate discharge from sfincs.dis time grid to map output times
+        # discharge shape: [T_dis, n_src]
+        bc_tensor = np.zeros((n_bc, time_steps, 2), dtype=np.float32)
+        for i in range(n_bc):
+            f_interp = interp1d(dis_times_s, discharge[:, i],
+                                kind='linear', bounds_error=False,
+                                fill_value=(discharge[0, i], discharge[-1, i]))
+            # dataset.py reads BC[:,:,1] as the hydrograph — channel 0 is unused
+            bc_tensor[i, :, 1] = f_interp(map_times_s).astype(np.float32)
+
+        data.node_BC = torch.tensor(node_bc_indices, dtype=torch.int32)
+        data.BC = torch.FloatTensor(bc_tensor)
+        data.type_BC = torch.tensor(2, dtype=torch.int32)  # discharge type
+        # Scalar 1.0 broadcasts correctly over BC [n_bc, T, 2] in dataset.py
+        data.edge_BC_length = torch.ones(1, dtype=torch.float32)
+    else:
+        # Fallback: preserve template BC structure, just resize time dimension
+        if hasattr(data, "node_BC"):
+            n_bc = int(data.node_BC.shape[0])
+            data.BC = torch.zeros((n_bc, time_steps, 2), dtype=torch.float32)
 
     return data
 
@@ -144,6 +201,8 @@ def main():
     parser.add_argument("--bed-level-var", default="zb", help="Bed elevation variable name")
     parser.add_argument("--vx-var", default=None, help="Optional velocity-x variable name")
     parser.add_argument("--vy-var", default=None, help="Optional velocity-y variable name")
+    parser.add_argument("--src-file", default=None, help="SFINCS source file (sfincs.src) with 7 source point locations")
+    parser.add_argument("--dis-file", default=None, help="SFINCS discharge file (sfincs.dis) with time series")
     args = parser.parse_args()
 
     if not os.path.exists(args.sfincs_map):
@@ -157,7 +216,7 @@ def main():
     print(f"  Target mesh nodes (faces): {target_points.shape[0]}")
 
     print("Opening SFINCS map...")
-    ds = xr.open_dataset(args.sfincs_map)
+    ds = xr.open_dataset(args.sfincs_map, decode_times=False)
 
     if args.water_level_var not in ds.data_vars:
         raise RuntimeError(f"Water level variable '{args.water_level_var}' not found in sfincs_map.nc")
@@ -172,6 +231,14 @@ def main():
 
     if zs.ndim != 3 or zb.ndim != 2:
         raise RuntimeError("Expected zs [time,n,m] and zb [n,m].")
+
+    # Map output time vector in seconds (used to interpolate discharge)
+    time_var = ds.coords.get("time", ds.coords.get("t", None))
+    if time_var is not None:
+        map_times_s = time_var.values.astype(np.float64)
+    else:
+        map_times_s = np.arange(zs.shape[0], dtype=np.float64) * 3600.0
+    print(f"  Map time steps: {len(map_times_s)}  ({map_times_s[0]:.0f}s – {map_times_s[-1]:.0f}s)")
 
     print("Computing water depth WD = max(zs - zb, 0)...")
     WD_grid = np.maximum(zs - zb[None, :, :], 0.0).astype(np.float32)
@@ -196,7 +263,21 @@ def main():
         VY = np.zeros_like(WD, dtype=np.float32)
         print("Velocity Y not provided; using zeros.")
 
-    data_out = build_output_data(template_data, WD=WD, VX=VX, VY=VY)
+    # Source BCs (optional)
+    src_xy = dis_times_s = discharge = None
+    if args.src_file and args.dis_file:
+        print(f"Reading source points from {args.src_file}...")
+        src_xy = parse_src_file(args.src_file)
+        print(f"  {len(src_xy)} source points found.")
+        print(f"Reading discharge from {args.dis_file}...")
+        dis_times_s, discharge = parse_dis_file(args.dis_file)
+        print(f"  Discharge shape: {discharge.shape}  time range: {dis_times_s[0]:.0f}s – {dis_times_s[-1]:.0f}s")
+        if discharge.shape[1] != len(src_xy):
+            raise RuntimeError(f"Discharge has {discharge.shape[1]} columns but src file has {len(src_xy)} points.")
+
+    data_out = build_output_data(template_data, WD=WD, VX=VX, VY=VY,
+                                 map_times_s=map_times_s, src_xy=src_xy,
+                                 dis_times_s=dis_times_s, discharge=discharge)
 
     train_dir = os.path.join(args.out_root, "train")
     test_dir = os.path.join(args.out_root, "test")

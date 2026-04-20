@@ -361,21 +361,150 @@ def create_mesh_template_pkl(
     return output_pkl_path
 
 
+def create_mesh_template_from_pol(pol_path, xyz_path, output_pkl_path,
+                                   with_multiscale=False, number_of_multiscales=4,
+                                   n_timesteps=10):
+    """Create a mesh template directly from an existing .pol boundary and .xyz DEM,
+    bypassing the shapefile conversion step."""
+    import pickle
+
+    print(f"\n=== Creating Mesh Template (from .pol + .xyz) ===")
+    print(f"Polygon: {pol_path}")
+    print(f"DEM:     {xyz_path}")
+    print(f"Output:  {output_pkl_path}")
+    print(f"Multiscale: {with_multiscale}")
+
+    os.makedirs(os.path.dirname(os.path.abspath(output_pkl_path)), exist_ok=True)
+
+    dem_data = np.loadtxt(xyz_path)
+    print(f"   DEM points: {dem_data.shape[0]}")
+    print(f"   Elevation range: {dem_data[:, 2].min():.2f} to {dem_data[:, 2].max():.2f} m")
+
+    print("\n4. Creating mesh from polygon...")
+    mesh_list = create_mesh_dhydro(pol_path, number_of_multiscales, for_simulation=False)
+    finest_mesh = mesh_list[-1]
+    print(f"   Finest mesh faces: {finest_mesh.face_x.shape[0]}")
+
+    print("\n5. Interpolating DEM to mesh...")
+    finest_mesh._import_DEM(xyz_path)
+
+    finest_mesh.edge_index_BC = np.asarray(finest_mesh.boundary_edges, dtype=int)
+    edge_bc_idx = []
+    for edge in finest_mesh.edge_index_BC:
+        idx = np.where(
+            ((edge == finest_mesh.edge_index.T).sum(1) == 2)
+            | ((edge[::-1] == finest_mesh.edge_index.T).sum(1) == 2)
+        )[0]
+        if len(idx) > 0:
+            edge_bc_idx.append(idx[0])
+    finest_mesh.edge_BC = np.asarray(edge_bc_idx, dtype=int)
+    if hasattr(finest_mesh, 'edge_type') and finest_mesh.edge_BC.size > 0:
+        finest_mesh.edge_type[finest_mesh.edge_BC] = 2
+    finest_mesh.face_BC = find_face_BC(finest_mesh)
+
+    print("\n6. Adding ghost cells for boundary conditions...")
+    if with_multiscale:
+        all_bc_mids = finest_mesh.node_xy[finest_mesh.edge_index_BC].mean(1)
+        # interpolate_BC_location_multiscale expects a SINGLE BC edge midpoint.
+        # Pick the boundary edge farthest from the domain centroid (likely outlet).
+        centroid = finest_mesh.node_xy.mean(0)
+        dists = np.linalg.norm(all_bc_mids - centroid, axis=1)
+        best = int(dists.argmax())
+        edge_BC_mid = all_bc_mids[best:best+1]
+        mesh_list = interpolate_BC_location_multiscale(mesh_list, edge_BC_mid)
+        mesh_list = [add_ghost_cells_mesh(m) for m in mesh_list]
+
+        multiscale_mesh = MultiscaleMesh()
+        multiscale_mesh.stack_meshes(mesh_list)
+        mesh = multiscale_mesh
+
+        finest_mesh_with_ghost = mesh_list[-1]
+        n_faces_fine = finest_mesh_with_ghost.face_x.shape[0]
+        WD_fine = np.zeros((n_faces_fine, n_timesteps), dtype=np.float32)
+        VX_fine = np.zeros((n_faces_fine, n_timesteps), dtype=np.float32)
+        VY_fine = np.zeros((n_faces_fine, n_timesteps), dtype=np.float32)
+        DEM_fine = finest_mesh_with_ghost.DEM.copy()
+
+        DEM_fine, WD_fine, VX_fine, VY_fine = add_ghost_cells_attributes(
+            finest_mesh_with_ghost, DEM_fine, WD_fine, VX_fine, VY_fine
+        )
+        DEM, WD, VX, VY = pool_multiscale_attributes(mesh, DEM_fine, WD_fine, VX_fine, VY_fine, reduce='mean')
+        DEM = update_ghost_cells_attributes(mesh, DEM)[0]
+        print(f"   Multiscale meshes: {mesh.num_meshes}")
+    else:
+        mesh = add_ghost_cells_mesh(finest_mesh)
+        n_faces = mesh.face_x.shape[0]
+        WD = np.zeros((n_faces, n_timesteps), dtype=np.float32)
+        VX = np.zeros((n_faces, n_timesteps), dtype=np.float32)
+        VY = np.zeros((n_faces, n_timesteps), dtype=np.float32)
+        DEM = mesh.DEM.copy()
+        DEM, WD, VX, VY = add_ghost_cells_attributes(mesh, DEM, WD, VX, VY)
+
+    data = Data()
+    data.DEM = torch.FloatTensor(DEM)
+    data.WD = torch.FloatTensor(WD)
+    data.VX = torch.FloatTensor(VX)
+    data.VY = torch.FloatTensor(VY)
+    data.area = torch.FloatTensor(mesh.face_area)
+    data.edge_index = torch.LongTensor(mesh.dual_edge_index)
+    data.face_distance = torch.FloatTensor(mesh.dual_edge_length)
+    data.face_relative_distance = torch.FloatTensor(mesh.face_relative_distance)
+    data.edge_slope = (data.DEM[data.edge_index][0] - data.DEM[data.edge_index][1]) / (data.face_distance + 1e-6)
+    data.num_nodes = mesh.face_x.shape[0]
+    data.node_BC = torch.IntTensor(mesh.ghost_cells_ids)
+    data.edge_BC_length = torch.FloatTensor(mesh.edge_length[mesh.edge_BC])
+
+    if with_multiscale:
+        data.node_ptr = torch.LongTensor(mesh.face_ptr)
+        data.edge_ptr = torch.LongTensor(mesh.dual_edge_ptr)
+        data.intra_edge_ptr = torch.LongTensor(mesh.intra_edge_ptr)
+        data.intra_mesh_edge_index = torch.LongTensor(mesh.intra_mesh_dual_edge_index)
+        n_bc_finest = len(mesh.meshes[-1].ghost_cells_ids)
+        data.node_BC = data.node_BC[-n_bc_finest:]
+        data.edge_BC_length = data.edge_BC_length[-n_bc_finest:]
+
+    BC_dummy = np.zeros((n_timesteps, 2), dtype=np.float32)
+    data.BC = torch.FloatTensor(BC_dummy).unsqueeze(0).repeat(len(data.node_BC), 1, 1)
+    data.type_BC = torch.tensor(2, dtype=torch.int)
+    data.mesh = mesh
+
+    with open(output_pkl_path, 'wb') as f:
+        pickle.dump([data], f)
+    print(f"\n=== Template saved: {output_pkl_path} ===")
+    print(f"   WD shape: {tuple(data.WD.shape)}")
+    return output_pkl_path
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Create a mesh template (.pkl) from shapefile + DEM"
     )
     parser.add_argument(
-        'shapefile',
-        help='Path to catchment boundary shapefile (.shp)'
+        'shapefile', nargs='?', default=None,
+        help='Path to catchment boundary shapefile (.shp) — omit if using --pol'
     )
     parser.add_argument(
-        'dem',
-        help='Path to DEM file (.tif or .xyz)'
+        'dem', nargs='?', default=None,
+        help='Path to DEM file (.tif or .xyz) — omit if using --pol'
     )
     parser.add_argument(
-        'output',
+        'output', nargs='?', default=None,
         help='Output path for template pickle file (.pkl)'
+    )
+    parser.add_argument(
+        '--pol',
+        default=None,
+        help='Use existing .pol boundary file directly (skips shapefile conversion)'
+    )
+    parser.add_argument(
+        '--xyz',
+        default=None,
+        help='Use existing .xyz DEM file directly (required with --pol)'
+    )
+    parser.add_argument(
+        '--out',
+        default=None,
+        help='Output .pkl path (alternative to positional argument)'
     )
     parser.add_argument(
         '--multiscale',
@@ -400,23 +529,57 @@ def main():
         default=10,
         help='Number of dummy time steps (will be replaced by SFINCS converter)'
     )
-    
+
     args = parser.parse_args()
-    
-    # Validate inputs
+
+    output = args.out or args.output
+
+    # --pol / --xyz shortcut: skip shapefile conversion
+    if args.pol is not None:
+        if args.xyz is None:
+            print("Error: --xyz is required when using --pol")
+            return 1
+        if output is None:
+            print("Error: output path required (positional arg or --out)")
+            return 1
+        for p, label in [(args.pol, '--pol'), (args.xyz, '--xyz')]:
+            if not os.path.exists(p):
+                print(f"Error: {label} file not found: {p}")
+                return 1
+        try:
+            create_mesh_template_from_pol(
+                pol_path=args.pol,
+                xyz_path=args.xyz,
+                output_pkl_path=output,
+                with_multiscale=args.multiscale,
+                number_of_multiscales=args.num_scales,
+                n_timesteps=args.timesteps,
+            )
+            return 0
+        except Exception as e:
+            print(f"Error: {e}")
+            import traceback
+            traceback.print_exc()
+            return 1
+
+    # Original shapefile path
+    if args.shapefile is None or args.dem is None or output is None:
+        parser.print_help()
+        return 1
+
     if not os.path.exists(args.shapefile):
         print(f"Error: Shapefile not found: {args.shapefile}")
         return 1
-    
+
     if not os.path.exists(args.dem):
         print(f"Error: DEM file not found: {args.dem}")
         return 1
-    
+
     try:
         create_mesh_template_pkl(
             shapefile_path=args.shapefile,
             dem_tif_path=args.dem,
-            output_pkl_path=args.output,
+            output_pkl_path=output,
             with_multiscale=args.multiscale,
             number_of_multiscales=args.num_scales,
             simplify_tolerance=args.simplify,

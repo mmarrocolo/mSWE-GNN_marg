@@ -722,12 +722,34 @@ class Mesh(object):
         self.face_y = mesh.face_y
 
         self.edge_index = mesh.edge_nodes.reshape(-1,2).T
-        self.dual_edge_index = mesh.edge_faces.reshape(-1,2).T
-        
-        extra_face_bnd_mask = self.dual_edge_index[1,:] == -1
-        self.face_bnd = self.dual_edge_index[0,extra_face_bnd_mask]
-        self.dual_edge_index = self.dual_edge_index[:,~extra_face_bnd_mask]
-        self.dual_edge_index = to_undirected(torch.LongTensor(self.dual_edge_index)).numpy() #convert to undirected graph
+
+        # meshkernel ≥8 changed edge_faces from 2*num_edges pairs to num_edges
+        # entries (1 face per edge). Reconstruct dual graph from face_edges.
+        num_edges = self.edge_index.shape[1]
+        if mesh.edge_faces.size == 2 * num_edges:
+            # old API: pairs [face_left, face_right, ...]
+            self.dual_edge_index = mesh.edge_faces.reshape(-1, 2).T
+            extra_face_bnd_mask = self.dual_edge_index[1, :] == -1
+            self.face_bnd = self.dual_edge_index[0, extra_face_bnd_mask]
+            self.dual_edge_index = self.dual_edge_index[:, ~extra_face_bnd_mask]
+        else:
+            # new API (≥8): build dual graph from face_edges
+            edge_to_faces = [[] for _ in range(num_edges)]
+            pos = 0
+            for face_id, n in enumerate(mesh.nodes_per_face):
+                for e in mesh.face_edges[pos:pos + n]:
+                    if 0 <= e < num_edges:
+                        edge_to_faces[e].append(face_id)
+                pos += n
+            interior = [(fs[0], fs[1]) for fs in edge_to_faces if len(fs) == 2]
+            boundary_faces = [fs[0] for fs in edge_to_faces if len(fs) == 1]
+            self.face_bnd = np.array(boundary_faces, dtype=int)
+            if interior:
+                self.dual_edge_index = np.array(interior, dtype=int).T
+            else:
+                self.dual_edge_index = np.empty((2, 0), dtype=int)
+
+        self.dual_edge_index = to_undirected(torch.LongTensor(self.dual_edge_index)).numpy()
 
         self.face_nodes = mesh.face_nodes
         self.nodes_per_face = mesh.nodes_per_face
@@ -738,9 +760,13 @@ class Mesh(object):
         boundary_edge = np.stack([boundary_nodes_ids[i:i+2] for i in range(len(boundary_nodes_ids)-1)]).T
         # boundary_nodes_ids = np.array([i for i in range(len(self.boundary_nodes)-1)])
         # boundary_edge = np.array([[i, (i+1)%len(boundary_nodes_ids)] for i in boundary_nodes_ids]).T
-        boundary_edge_id = np.array([np.where((self.edge_index.T == edge).all(1) | 
-                                              (self.edge_index[::-1].T == edge).all(1))[0] 
-                                              for edge in boundary_edge.T]).squeeze()
+        boundary_edge_id = []
+        for edge in boundary_edge.T:
+            matches = np.where((self.edge_index.T == edge).all(1) |
+                               (self.edge_index[::-1].T == edge).all(1))[0]
+            if len(matches) > 0:
+                boundary_edge_id.append(matches[0])
+        boundary_edge_id = np.array(boundary_edge_id)
         self.edge_type = np.ones(self.edge_index.shape[1])
         self.edge_type[boundary_edge_id] = 3
         self.boundary_edges = self.edge_index[:,self.edge_type > 1].T
@@ -827,7 +853,9 @@ class Mesh(object):
             face_nodes_y = self.node_y[face_node]
             node_position += num_nodes
             face_area = get_polygon_area(face_nodes_x, face_nodes_y)
-            if face_area == 0: raise ValueError(f"Face {face_node} has area equal to zero")
+            if face_area == 0:
+                # Degenerate face (collinear nodes); use a tiny non-zero area to avoid downstream NaN
+                face_area = 1e-6
             face_areas.append(face_area)
         self.face_area = np.array(face_areas)
 
@@ -1217,10 +1245,18 @@ def interpolate_BC_location_multiscale(meshes, edge_BC_mid):
 
         while not is_there_edge_BC:
             possible_edges = np.array([find_closest_nodes(mesh.node_xy, edge, top_n=top_n) for edge in edge_BC_mid])
-            mesh.edge_index_BC = np.array([[node for node in edge if (mesh.node_xy[node] == mesh.boundary_nodes).sum() == 2] for edge in possible_edges])
-            mesh.edge_BC = np.array([np.where(((edge == mesh.edge_index.T).sum(1) == 2) | 
-                                            ((edge[::-1] == mesh.edge_index.T).sum(1) == 2))[0] 
-                                            for edge in mesh.edge_index_BC]).reshape(-1)
+            boundary_node_set = set(mesh.edge_index[:, mesh.edge_type >= 2].ravel().tolist())
+            raw_bc = [[node for node in edge if node in boundary_node_set]
+                      for edge in possible_edges]
+            valid_bc = [r for r in raw_bc if len(r) == 2]
+            mesh.edge_index_BC = np.array(valid_bc, dtype=int) if valid_bc else np.empty((0, 2), dtype=int)
+            edge_bc_ids = []
+            for edge in mesh.edge_index_BC:
+                matches = np.where(((edge == mesh.edge_index.T).sum(1) == 2) |
+                                   ((edge[::-1] == mesh.edge_index.T).sum(1) == 2))[0]
+                if len(matches) > 0:
+                    edge_bc_ids.append(matches[0])
+            mesh.edge_BC = np.array(edge_bc_ids, dtype=int).reshape(-1)
             if mesh.edge_BC.shape[0] == 1:
                 is_there_edge_BC = True
             elif top_n > 10:
@@ -1330,9 +1366,9 @@ def find_face_BC(mesh):
         face_nodes = np.concatenate((face_nodes, face_nodes[:1])).astype(int)
 
         # Find which face/s contains the boundary condition edge/s
-        if np.array([(mesh.edge_index_BC == face_nodes[j:j+2]).sum(1)==2 or
-                     (mesh.edge_index_BC[:,::-1] == face_nodes[j:j+2]).sum(1)==2
-                     for j in range(len(face_nodes)-1)]).sum(0) == 1:
+        if (np.array([((mesh.edge_index_BC == face_nodes[j:j+2]).sum(1)==2) |
+                      ((mesh.edge_index_BC[:,::-1] == face_nodes[j:j+2]).sum(1)==2)
+                      for j in range(len(face_nodes)-1)]).sum(0) == 1).any():
             face_BC.append(i)
 
     return np.array(face_BC)
