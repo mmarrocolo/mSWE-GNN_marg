@@ -25,9 +25,11 @@ import pickle
 from pathlib import Path
 from copy import copy
 
+from copy import copy as _copy
+
 from graph_creation import (
-    create_mesh_dhydro, 
-    Mesh, 
+    create_mesh_dhydro,
+    Mesh,
     MultiscaleMesh,
     save_polygon_to_file,
     find_face_BC,
@@ -134,10 +136,11 @@ def create_mesh_template_pkl(
     number_of_multiscales=4,
     simplify_tolerance=0,
     n_timesteps=10,
+    sfincs_map_nc=None,
 ):
     """
     Create a mesh template pickle file from shapefile + DEM.
-    
+
     Args:
         shapefile_path: Path to catchment boundary .shp
         dem_tif_path: Path to DEM .tif
@@ -146,6 +149,9 @@ def create_mesh_template_pkl(
         number_of_multiscales: Number of refinement levels
         simplify_tolerance: Simplify boundary to reduce nodes (0 = no simplification)
         n_timesteps: Number of time steps for dummy data (will be replaced by SFINCS converter)
+        sfincs_map_nc: Optional path to a SFINCS sfincs_map.nc file. When provided the
+            SFINCS structured grid is used as the finest mesh level and only
+            number_of_multiscales-1 coarser meshkernel meshes are created.
     """
     
     print(f"\n=== Creating Mesh Template ===")
@@ -213,9 +219,20 @@ def create_mesh_template_pkl(
     print(f"   DEM points: {dem_data.shape[0]}")
     print(f"   Elevation range: {dem_data[:, 2].min():.2f} to {dem_data[:, 2].max():.2f} m")
     
-    # Step 4: Create mesh from polygon
+    # Step 4: Create mesh from polygon (+ optional SFINCS finest level)
     print("\n4. Creating mesh from polygon...")
-    mesh_list = create_mesh_dhydro(polygon_file, number_of_multiscales, for_simulation=False)
+    n_mk_scales = number_of_multiscales - 1 if sfincs_map_nc else number_of_multiscales
+    mesh_list = create_mesh_dhydro(polygon_file, n_mk_scales, for_simulation=False)
+
+    if sfincs_map_nc:
+        if not os.path.exists(sfincs_map_nc):
+            raise FileNotFoundError(f"SFINCS map file not found: {sfincs_map_nc}")
+        print(f"   Loading SFINCS mesh from: {sfincs_map_nc}")
+        sfincs_mesh = Mesh()
+        sfincs_mesh._import_from_sfincs_map(sfincs_map_nc)
+        mesh_list.append(sfincs_mesh)
+        print(f"   SFINCS mesh faces: {sfincs_mesh.face_x.shape[0]}")
+
     finest_mesh = mesh_list[-1]
     print(f"   Finest mesh nodes: {finest_mesh.node_x.shape[0]}")
     print(f"   Finest mesh faces: {finest_mesh.face_x.shape[0]}")
@@ -226,32 +243,42 @@ def create_mesh_template_pkl(
     finest_mesh._import_DEM(dem_path)
     print(f"   Interpolated DEM range (finest): {finest_mesh.DEM.min():.2f} to {finest_mesh.DEM.max():.2f} m")
 
-    # Initialize BC edge/face attributes from all detected boundary edges.
-    if not hasattr(finest_mesh, 'boundary_edges') or len(finest_mesh.boundary_edges) == 0:
-        raise RuntimeError('Could not infer boundary edges to initialize BC attributes.')
+    # Initialize BC edge/face attributes.
+    # For a SFINCS mesh these are already set by _import_from_sfincs_map;
+    # for a pure meshkernel mesh we derive them from boundary edges.
+    if sfincs_map_nc:
+        if finest_mesh.face_BC.size == 0:
+            raise RuntimeError('SFINCS mesh has no open-boundary cells (msk==3). '
+                               'Check the sfincs_map.nc mask.')
+    else:
+        if not hasattr(finest_mesh, 'boundary_edges') or len(finest_mesh.boundary_edges) == 0:
+            raise RuntimeError('Could not infer boundary edges to initialize BC attributes.')
 
-    finest_mesh.edge_index_BC = np.asarray(finest_mesh.boundary_edges, dtype=int)
-    edge_bc_idx = []
-    for edge in finest_mesh.edge_index_BC:
-        idx = np.where(
-            ((edge == finest_mesh.edge_index.T).sum(1) == 2)
-            | ((edge[::-1] == finest_mesh.edge_index.T).sum(1) == 2)
-        )[0]
-        if len(idx) > 0:
-            edge_bc_idx.append(idx[0])
+        finest_mesh.edge_index_BC = np.asarray(finest_mesh.boundary_edges, dtype=int)
+        edge_bc_idx = []
+        for edge in finest_mesh.edge_index_BC:
+            idx = np.where(
+                ((edge == finest_mesh.edge_index.T).sum(1) == 2)
+                | ((edge[::-1] == finest_mesh.edge_index.T).sum(1) == 2)
+            )[0]
+            if len(idx) > 0:
+                edge_bc_idx.append(idx[0])
 
-    finest_mesh.edge_BC = np.asarray(edge_bc_idx, dtype=int)
-    if hasattr(finest_mesh, 'edge_type') and finest_mesh.edge_BC.size > 0:
-        finest_mesh.edge_type[finest_mesh.edge_BC] = 2
+        finest_mesh.edge_BC = np.asarray(edge_bc_idx, dtype=int)
+        if hasattr(finest_mesh, 'edge_type') and finest_mesh.edge_BC.size > 0:
+            finest_mesh.edge_type[finest_mesh.edge_BC] = 2
 
-    finest_mesh.face_BC = find_face_BC(finest_mesh)
-    if finest_mesh.face_BC.size == 0:
-        raise RuntimeError('Could not infer boundary face for BC initialization.')
+        finest_mesh.face_BC = find_face_BC(finest_mesh)
+        if finest_mesh.face_BC.size == 0:
+            raise RuntimeError('Could not infer boundary face for BC initialization.')
 
     # Step 6: Build single-scale or multiscale mesh with ghost cells
     print("\n6. Adding ghost cells for boundary conditions...")
     if with_multiscale:
-        edge_BC_mid = finest_mesh.node_xy[finest_mesh.edge_index_BC].mean(1)
+        if sfincs_map_nc:
+            edge_BC_mid = finest_mesh.face_xy[finest_mesh.face_BC].mean(0, keepdims=True)
+        else:
+            edge_BC_mid = finest_mesh.node_xy[finest_mesh.edge_index_BC].mean(1)
         mesh_list = interpolate_BC_location_multiscale(mesh_list, edge_BC_mid)
         mesh_list = [add_ghost_cells_mesh(m) for m in mesh_list]
 
@@ -363,9 +390,15 @@ def create_mesh_template_pkl(
 
 def create_mesh_template_from_pol(pol_path, xyz_path, output_pkl_path,
                                    with_multiscale=False, number_of_multiscales=4,
-                                   n_timesteps=10):
+                                   n_timesteps=10, sfincs_map_nc=None):
     """Create a mesh template directly from an existing .pol boundary and .xyz DEM,
-    bypassing the shapefile conversion step."""
+    bypassing the shapefile conversion step.
+
+    Args:
+        sfincs_map_nc: Optional path to a SFINCS sfincs_map.nc file. When provided the
+            SFINCS structured grid is used as the finest mesh level and only
+            number_of_multiscales-1 coarser meshkernel meshes are created.
+    """
     import pickle
 
     print(f"\n=== Creating Mesh Template (from .pol + .xyz) ===")
@@ -373,6 +406,8 @@ def create_mesh_template_from_pol(pol_path, xyz_path, output_pkl_path,
     print(f"DEM:     {xyz_path}")
     print(f"Output:  {output_pkl_path}")
     print(f"Multiscale: {with_multiscale}")
+    if sfincs_map_nc:
+        print(f"SFINCS map: {sfincs_map_nc}")
 
     os.makedirs(os.path.dirname(os.path.abspath(output_pkl_path)), exist_ok=True)
 
@@ -381,37 +416,64 @@ def create_mesh_template_from_pol(pol_path, xyz_path, output_pkl_path,
     print(f"   Elevation range: {dem_data[:, 2].min():.2f} to {dem_data[:, 2].max():.2f} m")
 
     print("\n4. Creating mesh from polygon...")
-    mesh_list = create_mesh_dhydro(pol_path, number_of_multiscales, for_simulation=False)
+    n_mk_scales = number_of_multiscales - 1 if sfincs_map_nc else number_of_multiscales
+    mesh_list = create_mesh_dhydro(pol_path, n_mk_scales, for_simulation=False)
+
+    if sfincs_map_nc:
+        if not os.path.exists(sfincs_map_nc):
+            raise FileNotFoundError(f"SFINCS map file not found: {sfincs_map_nc}")
+        print(f"   Loading SFINCS mesh from: {sfincs_map_nc}")
+        sfincs_mesh = Mesh()
+        sfincs_mesh._import_from_sfincs_map(sfincs_map_nc)
+        mesh_list.append(sfincs_mesh)
+        print(f"   SFINCS mesh faces: {sfincs_mesh.face_x.shape[0]}")
+
     finest_mesh = mesh_list[-1]
     print(f"   Finest mesh faces: {finest_mesh.face_x.shape[0]}")
 
     print("\n5. Interpolating DEM to mesh...")
     finest_mesh._import_DEM(xyz_path)
 
-    finest_mesh.edge_index_BC = np.asarray(finest_mesh.boundary_edges, dtype=int)
-    edge_bc_idx = []
-    for edge in finest_mesh.edge_index_BC:
-        idx = np.where(
-            ((edge == finest_mesh.edge_index.T).sum(1) == 2)
-            | ((edge[::-1] == finest_mesh.edge_index.T).sum(1) == 2)
-        )[0]
-        if len(idx) > 0:
-            edge_bc_idx.append(idx[0])
-    finest_mesh.edge_BC = np.asarray(edge_bc_idx, dtype=int)
-    if hasattr(finest_mesh, 'edge_type') and finest_mesh.edge_BC.size > 0:
-        finest_mesh.edge_type[finest_mesh.edge_BC] = 2
-    finest_mesh.face_BC = find_face_BC(finest_mesh)
+    # Initialize BC attributes for finest mesh.
+    # SFINCS mesh: already set by _import_from_sfincs_map.
+    # Meshkernel mesh: derive from boundary edges.
+    if not sfincs_map_nc:
+        finest_mesh.edge_index_BC = np.asarray(finest_mesh.boundary_edges, dtype=int)
+        edge_bc_idx = []
+        for edge in finest_mesh.edge_index_BC:
+            idx = np.where(
+                ((edge == finest_mesh.edge_index.T).sum(1) == 2)
+                | ((edge[::-1] == finest_mesh.edge_index.T).sum(1) == 2)
+            )[0]
+            if len(idx) > 0:
+                edge_bc_idx.append(idx[0])
+        finest_mesh.edge_BC = np.asarray(edge_bc_idx, dtype=int)
+        if hasattr(finest_mesh, 'edge_type') and finest_mesh.edge_BC.size > 0:
+            finest_mesh.edge_type[finest_mesh.edge_BC] = 2
+        finest_mesh.face_BC = find_face_BC(finest_mesh)
 
     print("\n6. Adding ghost cells for boundary conditions...")
     if with_multiscale:
-        all_bc_mids = finest_mesh.node_xy[finest_mesh.edge_index_BC].mean(1)
-        # interpolate_BC_location_multiscale expects a SINGLE BC edge midpoint.
-        # Pick the boundary edge farthest from the domain centroid (likely outlet).
-        centroid = finest_mesh.node_xy.mean(0)
-        dists = np.linalg.norm(all_bc_mids - centroid, axis=1)
-        best = int(dists.argmax())
-        edge_BC_mid = all_bc_mids[best:best+1]
-        mesh_list = interpolate_BC_location_multiscale(mesh_list, edge_BC_mid)
+        if sfincs_map_nc:
+            # SFINCS BC cells (msk==3) lie at the SFINCS grid boundary, which is in the
+            # interior of the meshkernel polygon. Seed the coarser-mesh BC search from the
+            # finest meshkernel mesh's polygon boundary edges instead.
+            mk_finest = mesh_list[-2]
+            bnd_mids = mk_finest.node_xy[mk_finest.boundary_edges].mean(1)
+            valid = np.isfinite(bnd_mids).all(axis=1)
+            bnd_mids = bnd_mids[valid]
+            centroid = mk_finest.face_xy.mean(0)
+            dists = np.linalg.norm(bnd_mids - centroid, axis=1)
+            best = int(dists.argmax())
+            edge_BC_mid = bnd_mids[best:best+1]
+            interpolate_BC_location_multiscale(mesh_list[:-1], edge_BC_mid)
+        else:
+            all_bc_mids = finest_mesh.node_xy[finest_mesh.edge_index_BC].mean(1)
+            centroid = finest_mesh.node_xy.mean(0)
+            dists = np.linalg.norm(all_bc_mids - centroid, axis=1)
+            best = int(dists.argmax())
+            edge_BC_mid = all_bc_mids[best:best+1]
+            mesh_list = interpolate_BC_location_multiscale(mesh_list, edge_BC_mid)
         mesh_list = [add_ghost_cells_mesh(m) for m in mesh_list]
 
         multiscale_mesh = MultiscaleMesh()

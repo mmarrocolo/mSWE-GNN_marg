@@ -97,8 +97,8 @@ def plot_faces(mesh, ax=None, face_value=None, **kwargs):
     ax.add_collection(collection)
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.set_xlim(mesh.node_x.min(), mesh.node_x.max())
-    ax.set_ylim(mesh.node_y.min(), mesh.node_y.max())
+    ax.set_xlim(np.nanmin(mesh.node_x), np.nanmax(mesh.node_x))
+    ax.set_ylim(np.nanmin(mesh.node_y), np.nanmax(mesh.node_y))
 
     return ax
 

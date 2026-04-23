@@ -13,7 +13,7 @@ dataset_parameters:
 
 # Scaler options: null, 'minmax', 'minmax_neg', or 'standard'
 scalers: 
-  DEM_scaler        : null
+  DEM_scaler        : 'standard'
   slope_scaler      : null
   area_scaler       : 'standard'
   edge_length_scaler: 'standard'

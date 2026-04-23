@@ -360,8 +360,8 @@ def plot_faces(mesh, ax=None, face_value=None, **kwargs):
     collection = PatchCollection(patches, **kwargs)
     collection.set_array(face_value)
     ax.add_collection(collection)
-    ax.set_xlim(mesh.node_x.min(), mesh.node_x.max())
-    ax.set_ylim(mesh.node_y.min(), mesh.node_y.max())
+    ax.set_xlim(np.nanmin(mesh.node_x), np.nanmax(mesh.node_x))
+    ax.set_ylim(np.nanmin(mesh.node_y), np.nanmax(mesh.node_y))
 
     return ax
 
@@ -386,8 +386,8 @@ def plot_mesh_and_dual(mesh, ax=None, **plt_kwargs):
     node_size = 4000/dual_graph.number_of_nodes()**0.9
     nx.draw(dual_graph, pos, ax=ax, node_size=node_size, width=0.7, **plt_kwargs)
     
-    ax.set_xlim(mesh.node_x.min(), mesh.node_x.max())
-    ax.set_ylim(mesh.node_y.min(), mesh.node_y.max())
+    ax.set_xlim(np.nanmin(mesh.node_x), np.nanmax(mesh.node_x))
+    ax.set_ylim(np.nanmin(mesh.node_y), np.nanmax(mesh.node_y))
 
     return ax
 
@@ -756,7 +756,12 @@ class Mesh(object):
 
         boundary_polygon = meshkernel_mesh.mesh2d_get_mesh_boundaries_as_polygons()
         self.boundary_nodes = np.stack((boundary_polygon.x_coordinates, boundary_polygon.y_coordinates),-1)
-        boundary_nodes_ids = [np.where((self.node_xy == node).all(1))[0][0] for node in self.boundary_nodes[:-1]]
+        from scipy.spatial import cKDTree as _cKDTree
+        _valid = np.isfinite(self.node_x) & np.isfinite(self.node_y)
+        _valid_idx = np.where(_valid)[0]
+        _tree = _cKDTree(self.node_xy[_valid])
+        _, _nn = _tree.query(self.boundary_nodes[:-1])
+        boundary_nodes_ids = _valid_idx[_nn]
         boundary_edge = np.stack([boundary_nodes_ids[i:i+2] for i in range(len(boundary_nodes_ids)-1)]).T
         # boundary_nodes_ids = np.array([i for i in range(len(self.boundary_nodes)-1)])
         # boundary_edge = np.array([[i, (i+1)%len(boundary_nodes_ids)] for i in boundary_nodes_ids]).T
@@ -770,6 +775,179 @@ class Mesh(object):
         self.edge_type = np.ones(self.edge_index.shape[1])
         self.edge_type[boundary_edge_id] = 3
         self.boundary_edges = self.edge_index[:,self.edge_type > 1].T
+        self._get_derived_attributes()
+
+    def _import_from_sfincs_map(self, nc_file):
+        """Import mesh topology from SFINCS map output (structured regular grid).
+
+        Active cells (msk > 0) become faces; open-boundary cells (msk == 3)
+        are stored in face_BC. Cell corners become nodes.
+        """
+        ds = xr.open_dataset(nc_file, decode_times=False)
+
+        x   = ds.coords['x'].values                      # (n_rows, n_cols) cell centers
+        y   = ds.coords['y'].values
+        cx  = ds['corner_x'].values                       # (n_rows+1, n_cols+1) corners
+        cy  = ds['corner_y'].values
+        msk = ds['msk'].values.astype(np.int32)           # (n_rows, n_cols)
+
+        n_rows, n_cols = x.shape
+
+        # Active faces
+        active_flat = np.flatnonzero(msk > 0)
+        active_ni   = active_flat // n_cols
+        active_mi   = active_flat % n_cols
+        n_faces     = len(active_flat)
+
+        self.face_x = x.flat[active_flat].astype(np.float64)
+        self.face_y = y.flat[active_flat].astype(np.float64)
+
+        cell_to_face = np.full(n_rows * n_cols, -1, dtype=np.int32)
+        cell_to_face[active_flat] = np.arange(n_faces, dtype=np.int32)
+
+        # --- Nodes (unique corners of active cells) ---
+        # Cell (ni, mi) corners: BL=(ni,mi), BR=(ni,mi+1), TR=(ni+1,mi+1), TL=(ni+1,mi)
+        c_ni = np.stack([active_ni, active_ni,     active_ni + 1, active_ni + 1], axis=1)
+        c_mi = np.stack([active_mi, active_mi + 1, active_mi + 1, active_mi    ], axis=1)
+        c_flat_all = (c_ni * (n_cols + 1) + c_mi).reshape(-1)
+
+        unique_corners, corner_inv = np.unique(c_flat_all, return_inverse=True)
+        self.node_x = cx.flat[unique_corners].astype(np.float64)
+        self.node_y = cy.flat[unique_corners].astype(np.float64)
+
+        face_node_arr    = corner_inv.reshape(n_faces, 4)
+        self.face_nodes  = face_node_arr.reshape(-1).astype(np.int32)
+        self.nodes_per_face = np.full(n_faces, 4, dtype=np.int32)
+
+        # --- Primal edges (node-to-node, unique) ---
+        fn0      = face_node_arr[:, [0, 1, 2, 3]]
+        fn1      = face_node_arr[:, [1, 2, 3, 0]]
+        e_all    = np.stack([fn0.reshape(-1), fn1.reshape(-1)], axis=1)
+        e_sorted = np.sort(e_all, axis=1)
+        e_unique = np.unique(e_sorted, axis=0)
+        self.edge_index = e_unique.T.astype(np.int32)
+
+        # --- Dual edges (face-to-face): right and top neighbors only ---
+        valid_r = active_mi + 1 < n_cols
+        r_nbr   = cell_to_face[active_ni[valid_r] * n_cols + (active_mi[valid_r] + 1)]
+        has_r   = r_nbr >= 0
+
+        valid_t = active_ni + 1 < n_rows
+        t_nbr   = cell_to_face[(active_ni[valid_t] + 1) * n_cols + active_mi[valid_t]]
+        has_t   = t_nbr >= 0
+
+        src = np.concatenate([np.flatnonzero(valid_r)[has_r], np.flatnonzero(valid_t)[has_t]])
+        dst = np.concatenate([r_nbr[has_r], t_nbr[has_t]])
+        self.dual_edge_index = to_undirected(
+            torch.LongTensor(np.stack([src, dst], axis=0))
+        ).numpy()
+
+        # --- Boundary and BC classification ---
+        # face_bnd: faces adjacent to at least one inactive/out-of-bounds neighbor
+        def _inactive_or_oob(ni_arr, mi_arr, dni, dmi):
+            nni, nmi = ni_arr + dni, mi_arr + dmi
+            oob = (nni < 0) | (nni >= n_rows) | (nmi < 0) | (nmi >= n_cols)
+            result = oob.copy()
+            ib = ~oob
+            result[ib] = msk.flat[nni[ib] * n_cols + nmi[ib]] == 0
+            return result
+
+        bot_bnd  = _inactive_or_oob(active_ni, active_mi, -1,  0)
+        right_bnd= _inactive_or_oob(active_ni, active_mi,  0,  1)
+        top_bnd  = _inactive_or_oob(active_ni, active_mi,  1,  0)
+        left_bnd = _inactive_or_oob(active_ni, active_mi,  0, -1)
+        is_bnd   = bot_bnd | right_bnd | top_bnd | left_bnd
+        self.face_bnd = np.flatnonzero(is_bnd).astype(np.int32)
+
+        # face_BC: cells with msk == 3 (SFINCS open-boundary flag)
+        bc_mask_active = msk.flat[active_flat] == 3
+        self.face_BC = np.flatnonzero(bc_mask_active).astype(np.int32)
+
+        # edge_index_BC and boundary_edges: edges of boundary/BC faces on domain edge
+        def _boundary_edges_for_faces(face_ids):
+            ni_f  = active_ni[face_ids]
+            mi_f  = active_mi[face_ids]
+            fn_f  = face_node_arr[face_ids]
+            pairs = []
+            # edge directions: (dni, dmi, left_corner, right_corner)
+            dirs = [(-1, 0, 0, 1), (0, 1, 1, 2), (1, 0, 2, 3), (0, -1, 3, 0)]
+            for dni, dmi, k0, k1 in dirs:
+                inactive = _inactive_or_oob(ni_f, mi_f, dni, dmi)
+                if inactive.any():
+                    pairs.append(
+                        np.stack([fn_f[inactive, k0], fn_f[inactive, k1]], axis=1)
+                    )
+            return np.unique(np.sort(np.concatenate(pairs), axis=1), axis=0) if pairs else np.zeros((0, 2), dtype=np.int32)
+
+        # One boundary edge per BC face (first inactive direction: bottom, right, top, left).
+        # This preserves the 1:1 face_BC↔edge_index_BC correspondence required by add_ghost_cells_mesh.
+        _bc_ni   = active_ni[self.face_BC]
+        _bc_mi   = active_mi[self.face_BC]
+        _fn_bc   = face_node_arr[self.face_BC]
+        _assigned = np.zeros(len(self.face_BC), dtype=bool)
+        _bc_edges = np.zeros((len(self.face_BC), 2), dtype=np.int32)
+        for _dni, _dmi, _k0, _k1 in [(-1, 0, 0, 1), (0, 1, 1, 2), (1, 0, 2, 3), (0, -1, 3, 0)]:
+            _use = _inactive_or_oob(_bc_ni, _bc_mi, _dni, _dmi) & ~_assigned
+            if _use.any():
+                _bc_edges[_use] = np.sort(
+                    np.stack([_fn_bc[_use, _k0], _fn_bc[_use, _k1]], axis=1), axis=1)
+                _assigned[_use] = True
+            if _assigned.all():
+                break
+        # Fallback for interior msk==3 cells (all 4 neighbours active): use the bottom edge.
+        # These cells have no boundary edge in the strict sense; we create a virtual one so
+        # that add_ghost_cells_mesh receives exactly one BC edge per BC face.
+        _interior_bc = ~_assigned
+        if _interior_bc.any():
+            _bc_edges[_interior_bc] = np.sort(
+                np.stack([_fn_bc[_interior_bc, 0], _fn_bc[_interior_bc, 1]], axis=1), axis=1)
+        self.edge_index_BC = _bc_edges
+        self.boundary_edges = _boundary_edges_for_faces(self.face_bnd).astype(np.int32)
+
+        # Precompute the "other nodes" (nodes NOT in the BC edge) for each BC face.
+        # add_ghost_cells_mesh relies on find_BC_other_nodes which uses heuristics that can
+        # miss some faces on a structured SFINCS grid.  Store the answer directly so
+        # find_BC_other_nodes can return it without any search.
+        _other_list = []
+        for _k, _fi in enumerate(self.face_BC):
+            _bc_set = set(self.edge_index_BC[_k].tolist())
+            for _n in face_node_arr[_fi].tolist():
+                if _n not in _bc_set:
+                    _other_list.append(_n)
+        self._other_nodes_bc = np.array(_other_list, dtype=np.int32)
+
+        # edge_BC: indices of BC edges in self.edge_index
+        if self.edge_index_BC.shape[0] > 0:
+            n_nodes = self.node_x.shape[0]
+            keys    = self.edge_index[0] * (n_nodes + 1) + self.edge_index[1]
+            query   = self.edge_index_BC[:, 0] * (n_nodes + 1) + self.edge_index_BC[:, 1]
+            sort_k  = np.argsort(keys)
+            pos     = np.searchsorted(keys[sort_k], query)
+            pos     = np.clip(pos, 0, len(sort_k) - 1)
+            cands   = sort_k[pos]
+            valid   = keys[cands] == query
+            self.edge_BC = cands[valid].astype(np.int32)
+        else:
+            self.edge_BC = np.zeros(0, dtype=np.int32)
+
+        # edge_type: 1=interior, 2=open-BC, 3=closed boundary
+        self.edge_type = np.ones(self.edge_index.shape[1], dtype=np.int32)
+        if self.edge_BC.size > 0:
+            self.edge_type[self.edge_BC] = 2
+        # mark other boundary edges as type 3
+        if self.boundary_edges.shape[0] > 0:
+            n_nodes = self.node_x.shape[0]
+            bnd_keys = set((self.boundary_edges[:, 0] * (n_nodes + 1) + self.boundary_edges[:, 1]).tolist())
+            bc_keys  = set((self.edge_index_BC[:, 0] * (n_nodes + 1) + self.edge_index_BC[:, 1]).tolist()) \
+                       if self.edge_index_BC.shape[0] > 0 else set()
+            other_bnd_keys = bnd_keys - bc_keys
+            if other_bnd_keys:
+                e_keys_all = self.edge_index[0] * (n_nodes + 1) + self.edge_index[1]
+                for key in other_bnd_keys:
+                    idx = np.flatnonzero(e_keys_all == key)
+                    if idx.size > 0:
+                        self.edge_type[idx[0]] = 3
+
         self._get_derived_attributes()
 
     def _import_from_Triangle(self, mesh):
@@ -1309,21 +1487,27 @@ def get_ghost_nodes(mesh):
     ghost_nodes = mesh.nodes_per_face[mesh.face_BC]-2
     mesh.ghost_node_ids = [mesh.node_x.shape[0]-j-1 for j in range(ghost_nodes.sum())][::-1]
 
+    cum = 0
     for i in range(num_BC_faces):
-        ghost_edge_index.append([mesh.ghost_node_ids[i], mesh.edge_index_BC[i,0]])
+        n_gn = int(ghost_nodes[i])
+        ghost_edge_index.append([mesh.ghost_node_ids[cum], mesh.edge_index_BC[i,0]])
 
         # loop for polygons with more than 3 nodes
-        for j in range(ghost_nodes[i]-1):
-            ghost_edge_index.append([mesh.ghost_node_ids[i+j], mesh.ghost_node_ids[i+j+1]])
+        for j in range(n_gn - 1):
+            ghost_edge_index.append([mesh.ghost_node_ids[cum+j], mesh.ghost_node_ids[cum+j+1]])
 
-        ghost_edge_index.append([mesh.edge_index_BC[i,1], mesh.ghost_node_ids[i+ghost_nodes[:i+1].sum()-1]])
-        ghost_face_nodes = mesh.ghost_node_ids[::-1] + mesh.edge_index_BC[i].tolist()
+        ghost_edge_index.append([mesh.edge_index_BC[i,1], mesh.ghost_node_ids[cum + n_gn - 1]])
+        ghost_face_nodes += mesh.ghost_node_ids[cum:cum+n_gn][::-1] + mesh.edge_index_BC[i].tolist()
+        cum += n_gn
 
     return np.array(ghost_edge_index).T, np.array(ghost_face_nodes).reshape(-1)
 
 def find_BC_other_nodes(mesh):
     """Returns the coordinates of the nodes that are in the boundary faces but not in the boundary edges"""
     assert mesh.face_BC is not [], "The boundary faces face_BC must be known"
+
+    if hasattr(mesh, '_other_nodes_bc'):
+        return mesh._other_nodes_bc
 
     BC_edge_index = []
     the_other_node = [] # the nodes which is not in the BC edge
@@ -1413,10 +1597,22 @@ def add_ghost_cells_mesh(mesh):
 
         distance_node_ghost_BC = np.linalg.norm((node_BC_xy - ghost_node_BC_xy), axis=1).reshape(-1,1)
 
-        # The ghost nodes are not mirrored correctly so we flip the normal
-        if (distance_node_ghost_BC < distance_node_edge_BC).any():
-            edge_outward_normal_faces[:,(distance_node_ghost_BC < distance_node_edge_BC).squeeze()] *= -1
-            edge_outward_normal_nodes[:,(distance_node_ghost_BC < distance_node_edge_BC).squeeze()] *= -1
+        # The ghost nodes are not mirrored correctly so we flip the normal.
+        # Original code assumed n_bc==1 (column boolean indexing); generalised here for n_bc>=1.
+        wrong_side = (distance_node_ghost_BC < distance_node_edge_BC).reshape(-1)  # (2*n_bc,) or (n_bc,)
+        if wrong_side.any():
+            n_bc = len(mesh.face_BC)
+            if len(wrong_side) == n_bc:
+                # triangular BC faces: one other node per face
+                flip_face = wrong_side
+                flip_node = wrong_side
+            else:
+                # quad BC faces: two other nodes per face — flip face if either node is wrong
+                nodes_per_bc = len(wrong_side) // n_bc
+                flip_face = wrong_side.reshape(n_bc, nodes_per_bc).any(axis=1)
+                flip_node  = np.repeat(flip_face, nodes_per_bc)
+            edge_outward_normal_faces[flip_face] *= -1
+            edge_outward_normal_nodes[flip_node]  *= -1
 
             ghost_face_BC_xy = face_symmetry_point - edge_outward_normal_faces[:,normal_adapter]*distance_face_edge_BC
             ghost_node_BC_xy = node_symmetry_point - edge_outward_normal_nodes[:,normal_adapter]*distance_node_edge_BC
