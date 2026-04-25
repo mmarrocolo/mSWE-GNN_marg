@@ -12,9 +12,8 @@ from tqdm import tqdm
 import warnings
 from scipy.stats import weibull_max
 warnings.filterwarnings("ignore", category=DeprecationWarning)
-from meshkernel import py_structures
 from graph_creation import center_grid_graph, interpolate_variable, Mesh
-from graph_creation import create_mesh_dhydro, generate_random_polygon_with_dike, save_mesh
+from graph_creation import create_gmesh, generate_random_polygon_with_dike, save_mesh
 
 def create_raw_dataset_folder(folder_name):
     """Create a folder for the raw datasets which contains 
@@ -342,7 +341,7 @@ def run_simulations_mesh(n_sim, model_folder, save_folder, start_sim=1,
         # Create mesh
         if i==0:
             # this is to avoid creating the mesh multiple times for the same DEM
-            mesh = create_mesh_dhydro(boundary_polygon_file, number_of_multiscales)
+            mesh = create_gmesh(boundary_polygon_file, with_interior_lines=False)
             save_mesh(mesh, mesh_file)
             if DEM_file is not None:
                 i += 1

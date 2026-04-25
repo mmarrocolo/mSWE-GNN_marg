@@ -28,10 +28,10 @@ from copy import copy
 from copy import copy as _copy
 
 from graph_creation import (
-    create_mesh_dhydro,
+    create_gmesh,
+    create_simple_grid_mesh,
     Mesh,
     MultiscaleMesh,
-    save_polygon_to_file,
     find_face_BC,
     interpolate_BC_location_multiscale,
     pool_multiscale_attributes,
@@ -134,6 +134,7 @@ def create_mesh_template_pkl(
     output_pkl_path,
     with_multiscale=False,
     number_of_multiscales=4,
+    mesh_resolutions=None,
     simplify_tolerance=0,
     n_timesteps=10,
     sfincs_map_nc=None,
@@ -142,16 +143,19 @@ def create_mesh_template_pkl(
     Create a mesh template pickle file from shapefile + DEM.
 
     Args:
-        shapefile_path: Path to catchment boundary .shp
+        shapefile_path: Path to catchment boundary .shp / .gpkg / any geopandas-readable file
         dem_tif_path: Path to DEM .tif
         output_pkl_path: Output path for .pkl file
         with_multiscale: If True, create multiscale mesh (required for MSGNN)
-        number_of_multiscales: Number of refinement levels
+        number_of_multiscales: Number of mesh scales (used when mesh_resolutions is None)
+        mesh_resolutions: List of max_distance values (m) from coarsest to finest,
+            e.g. [900, 500, 200].  If None, a geometric series is auto-computed
+            from the polygon bounding box and number_of_multiscales.
         simplify_tolerance: Simplify boundary to reduce nodes (0 = no simplification)
         n_timesteps: Number of time steps for dummy data (will be replaced by SFINCS converter)
         sfincs_map_nc: Optional path to a SFINCS sfincs_map.nc file. When provided the
             SFINCS structured grid is used as the finest mesh level and only
-            number_of_multiscales-1 coarser meshkernel meshes are created.
+            number_of_multiscales-1 coarser gmsh meshes are created.
     """
     
     print(f"\n=== Creating Mesh Template ===")
@@ -181,11 +185,14 @@ def create_mesh_template_pkl(
     except Exception:
         pass
     
-    # Step 2: Save polygon to temporary .pol file
-    print("\n2. Creating polygon file (.pol)...")
+    # Step 2: Save polygon to temporary .gpkg file for gmsh.
+    # No CRS is embedded so that geopandas can read it back without calling pyproj
+    # (avoids CRSError when the PROJ database path is not set in the kernel).
+    print("\n2. Creating polygon file (.gpkg)...")
+    import geopandas as gpd
     temp_dir = os.path.dirname(os.path.abspath(output_pkl_path))
-    polygon_file = os.path.join(temp_dir, 'temp_boundary.pol')
-    save_polygon_to_file(geom, polygon_file)
+    polygon_file = os.path.join(temp_dir, 'temp_boundary.gpkg')
+    gpd.GeoDataFrame(geometry=[geom]).to_file(polygon_file, driver='GPKG')
     
     # Step 3: Convert DEM .tif to .xyz (or use existing .xyz)
     print("\n3. Processing DEM...")
@@ -221,8 +228,27 @@ def create_mesh_template_pkl(
     
     # Step 4: Create mesh from polygon (+ optional SFINCS finest level)
     print("\n4. Creating mesh from polygon...")
-    n_mk_scales = number_of_multiscales - 1 if sfincs_map_nc else number_of_multiscales
-    mesh_list = create_mesh_dhydro(polygon_file, n_mk_scales, for_simulation=False)
+    n_scales = number_of_multiscales - 1 if sfincs_map_nc else number_of_multiscales
+    _bounds = geom.bounds  # (xmin, ymin, xmax, ymax) — use shapely object, avoids pyproj
+    if mesh_resolutions is None:
+        _diag = np.sqrt((_bounds[2] - _bounds[0])**2 + (_bounds[3] - _bounds[1])**2)
+        mesh_resolutions_used = [_diag / (2**i) for i in range(n_scales - 1, -1, -1)]
+    else:
+        mesh_resolutions_used = list(mesh_resolutions)[:n_scales]
+    print(f"   Mesh resolutions (m): {mesh_resolutions_used}")
+
+    def _make_coarse_mesh(d):
+        try:
+            return create_gmesh(polygon_file, with_interior_lines=False,
+                                max_distance=d, border_resample_distance=d)
+        except ImportError as _e:
+            if 'gmsh' in str(_e).lower() or 'pygmsh' in str(_e).lower():
+                print(f"   gmsh not available ({_e}); using simple grid at {d:.0f} m spacing")
+                return create_simple_grid_mesh(
+                    _bounds[0], _bounds[2], _bounds[1], _bounds[3], spacing=d)
+            raise
+
+    mesh_list = [_make_coarse_mesh(d) for d in mesh_resolutions_used]
 
     if sfincs_map_nc:
         if not os.path.exists(sfincs_map_nc):
@@ -245,7 +271,7 @@ def create_mesh_template_pkl(
 
     # Initialize BC edge/face attributes.
     # For a SFINCS mesh these are already set by _import_from_sfincs_map;
-    # for a pure meshkernel mesh we derive them from boundary edges.
+    # for a gmsh mesh we derive them from boundary edges.
     if sfincs_map_nc:
         if finest_mesh.face_BC.size == 0:
             raise RuntimeError('SFINCS mesh has no open-boundary cells (msk==3). '
@@ -276,10 +302,19 @@ def create_mesh_template_pkl(
     print("\n6. Adding ghost cells for boundary conditions...")
     if with_multiscale:
         if sfincs_map_nc:
-            edge_BC_mid = finest_mesh.face_xy[finest_mesh.face_BC].mean(0, keepdims=True)
+            # SFINCS mesh BC is already set by _import_from_sfincs_map; only propagate to gmsh meshes.
+            gmsh_finest = mesh_list[-2]
+            bnd_mids = gmsh_finest.node_xy[gmsh_finest.boundary_edges].mean(1)
+            valid = np.isfinite(bnd_mids).all(axis=1)
+            bnd_mids = bnd_mids[valid]
+            centroid = gmsh_finest.face_xy.mean(0)
+            dists = np.linalg.norm(bnd_mids - centroid, axis=1)
+            best = int(dists.argmax())
+            edge_BC_mid = bnd_mids[best:best + 1]
+            interpolate_BC_location_multiscale(mesh_list[:-1], edge_BC_mid)
         else:
             edge_BC_mid = finest_mesh.node_xy[finest_mesh.edge_index_BC].mean(1)
-        mesh_list = interpolate_BC_location_multiscale(mesh_list, edge_BC_mid)
+            mesh_list = interpolate_BC_location_multiscale(mesh_list, edge_BC_mid)
         mesh_list = [add_ghost_cells_mesh(m) for m in mesh_list]
 
         multiscale_mesh = MultiscaleMesh()
@@ -388,21 +423,30 @@ def create_mesh_template_pkl(
     return output_pkl_path
 
 
-def create_mesh_template_from_pol(pol_path, xyz_path, output_pkl_path,
+def create_mesh_template_from_pol(polygon_path, xyz_path, output_pkl_path,
                                    with_multiscale=False, number_of_multiscales=4,
-                                   n_timesteps=10, sfincs_map_nc=None):
-    """Create a mesh template directly from an existing .pol boundary and .xyz DEM,
+                                   mesh_resolutions=None, n_timesteps=10, sfincs_map_nc=None):
+    """Create a mesh template directly from a polygon file and .xyz DEM,
     bypassing the shapefile conversion step.
 
     Args:
+        polygon_path: Path to the polygon boundary (any geopandas-readable file:
+            .gpkg, .shp, etc.).
+        xyz_path: Path to DEM .xyz file (3 columns: x y z).
+        output_pkl_path: Output path for .pkl file.
+        with_multiscale: If True, create multiscale mesh (required for MSGNN).
+        number_of_multiscales: Number of mesh scales (used when mesh_resolutions is None).
+        mesh_resolutions: List of max_distance values (m) from coarsest to finest,
+            e.g. [900, 500, 200].  If None, a geometric series is auto-computed.
+        n_timesteps: Number of time steps for dummy data.
         sfincs_map_nc: Optional path to a SFINCS sfincs_map.nc file. When provided the
             SFINCS structured grid is used as the finest mesh level and only
-            number_of_multiscales-1 coarser meshkernel meshes are created.
+            number_of_multiscales-1 coarser gmsh meshes are created.
     """
     import pickle
 
-    print(f"\n=== Creating Mesh Template (from .pol + .xyz) ===")
-    print(f"Polygon: {pol_path}")
+    print(f"\n=== Creating Mesh Template (from polygon + .xyz) ===")
+    print(f"Polygon: {polygon_path}")
     print(f"DEM:     {xyz_path}")
     print(f"Output:  {output_pkl_path}")
     print(f"Multiscale: {with_multiscale}")
@@ -416,8 +460,19 @@ def create_mesh_template_from_pol(pol_path, xyz_path, output_pkl_path,
     print(f"   Elevation range: {dem_data[:, 2].min():.2f} to {dem_data[:, 2].max():.2f} m")
 
     print("\n4. Creating mesh from polygon...")
-    n_mk_scales = number_of_multiscales - 1 if sfincs_map_nc else number_of_multiscales
-    mesh_list = create_mesh_dhydro(pol_path, n_mk_scales, for_simulation=False)
+    n_scales = number_of_multiscales - 1 if sfincs_map_nc else number_of_multiscales
+    if mesh_resolutions is None:
+        import geopandas as gpd
+        _bounds = gpd.read_file(polygon_path).union_all().bounds
+        _diag = np.sqrt((_bounds[2] - _bounds[0])**2 + (_bounds[3] - _bounds[1])**2)
+        mesh_resolutions_used = [_diag / (2**i) for i in range(n_scales - 1, -1, -1)]
+    else:
+        mesh_resolutions_used = list(mesh_resolutions)[:n_scales]
+    print(f"   Mesh resolutions (m): {mesh_resolutions_used}")
+    mesh_list = [
+        create_gmesh(polygon_path, with_interior_lines=False, max_distance=d, border_resample_distance=d)
+        for d in mesh_resolutions_used
+    ]
 
     if sfincs_map_nc:
         if not os.path.exists(sfincs_map_nc):
@@ -436,7 +491,7 @@ def create_mesh_template_from_pol(pol_path, xyz_path, output_pkl_path,
 
     # Initialize BC attributes for finest mesh.
     # SFINCS mesh: already set by _import_from_sfincs_map.
-    # Meshkernel mesh: derive from boundary edges.
+    # gmsh mesh: derive from boundary edges.
     if not sfincs_map_nc:
         finest_mesh.edge_index_BC = np.asarray(finest_mesh.boundary_edges, dtype=int)
         edge_bc_idx = []

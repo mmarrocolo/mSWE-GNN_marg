@@ -19,8 +19,16 @@ from torch_geometric.utils import to_undirected
 from torch_geometric.utils import scatter
 from shapely.geometry import Polygon
 import xarray as xr
-from meshkernel import MeshKernel, Mesh2d, GeometryList, OrthogonalizationParameters, ProjectToLandBoundaryOption, MeshRefinementParameters
-from meshkernel import py_structures, DeleteMeshOption
+try:
+    import pygmsh
+    import gmsh
+except ImportError:
+    pygmsh = None
+    gmsh = None
+try:
+    from meshkernel import MeshKernel, GeometryList, OrthogonalizationParameters, ProjectToLandBoundaryOption, MeshRefinementParameters
+except ImportError:
+    MeshKernel = None
 
 def center_grid_graph(dim1, dim2, grid_size=1):
     '''
@@ -470,6 +478,166 @@ def create_mesh_triangle(vertices, segments=None, holes=None, max_area=5, max_sm
 
     return mesh
 
+def create_simple_grid_mesh(x_min, x_max, y_min, y_max, spacing):
+    """Create a regular Cartesian quad mesh over a bounding box.
+
+    Used as a fallback when gmsh/pygmsh is not installed.  The mesh covers
+    [x_min, x_max] × [y_min, y_max] with square cells of side *spacing*.
+
+    Args:
+        x_min, x_max, y_min, y_max: domain extents (same CRS as the SFINCS mesh)
+        spacing: cell size in metres
+
+    Returns:
+        Mesh object with all derived attributes computed.
+    """
+    xs = np.arange(x_min, x_max + spacing, spacing, dtype=np.float64)
+    ys = np.arange(y_min, y_max + spacing, spacing, dtype=np.float64)
+    n_cols = len(xs) - 1   # cells in x
+    n_rows = len(ys) - 1   # cells in y
+    n_faces = n_rows * n_cols
+
+    # Face centres (row-major: row varies slowest)
+    r_idx = np.repeat(np.arange(n_rows), n_cols)
+    c_idx = np.tile(np.arange(n_cols), n_rows)
+    face_x = 0.5 * (xs[c_idx] + xs[c_idx + 1])
+    face_y = 0.5 * (ys[r_idx] + ys[r_idx + 1])
+
+    # Node positions  — index: row*(n_cols+1) + col
+    # (same convention as _import_from_sfincs_map)
+    n_cols_node = n_cols + 1
+    n_rows_node = n_rows + 1
+    rn, cn = np.meshgrid(np.arange(n_rows_node), np.arange(n_cols_node), indexing='ij')
+    node_x = xs[cn.ravel()].astype(np.float64)
+    node_y = ys[rn.ravel()].astype(np.float64)
+
+    # Face → node: BL=(r,c), BR=(r,c+1), TR=(r+1,c+1), TL=(r+1,c)
+    bl = r_idx * n_cols_node + c_idx
+    br = r_idx * n_cols_node + c_idx + 1
+    tr = (r_idx + 1) * n_cols_node + c_idx + 1
+    tl = (r_idx + 1) * n_cols_node + c_idx
+    face_node_arr = np.stack([bl, br, tr, tl], axis=1).astype(np.int32)
+
+    # Primal edges (unique, sorted)
+    fn0 = face_node_arr[:, [0, 1, 2, 3]]
+    fn1 = face_node_arr[:, [1, 2, 3, 0]]
+    e_all = np.stack([fn0.ravel(), fn1.ravel()], axis=1)
+    e_unique = np.unique(np.sort(e_all, axis=1), axis=0)
+    edge_index = e_unique.T.astype(np.int32)
+
+    # Edge-to-face count → boundary detection
+    from collections import defaultdict
+    e2cnt = defaultdict(int)
+    for face in face_node_arr:
+        for k in range(4):
+            e2cnt[tuple(sorted([int(face[k]), int(face[(k + 1) % 4])]))] += 1
+    edge_type = np.array(
+        [3 if e2cnt[tuple(e.tolist())] == 1 else 1 for e in e_unique],
+        dtype=np.int32,
+    )
+    boundary_edges = e_unique[edge_type == 3]
+
+    # Dual edges (right + top neighbours)
+    fi = np.arange(n_faces).reshape(n_rows, n_cols)
+    src_r = fi[:, :-1].ravel();  dst_r = fi[:, 1:].ravel()
+    src_t = fi[:-1, :].ravel();  dst_t = fi[1:, :].ravel()
+    src = np.concatenate([src_r, src_t])
+    dst = np.concatenate([dst_r, dst_t])
+    dual_edge_index = to_undirected(
+        torch.LongTensor(np.stack([src, dst], axis=0))
+    ).numpy()
+
+    mesh = Mesh()
+    mesh.face_x = face_x
+    mesh.face_y = face_y
+    mesh.node_x = node_x
+    mesh.node_y = node_y
+    mesh.face_nodes = face_node_arr.ravel()
+    mesh.nodes_per_face = np.full(n_faces, 4, dtype=np.int32)
+    mesh.edge_index = edge_index
+    mesh.dual_edge_index = dual_edge_index
+    mesh.edge_type = edge_type
+    mesh.boundary_edges = boundary_edges
+    mesh._get_derived_attributes()
+    return mesh
+
+
+def resample_line(line, distance):
+    """Resample a shapely line geometry at regular intervals.
+
+    Args:
+        line: shapely geometry with a .length and .interpolate() method
+        distance (float or None): target spacing between resampled points.
+            If None the original geometry is returned unchanged.
+
+    Returns:
+        shapely.geometry.LineString with evenly-spaced coordinates.
+    """
+    from shapely.geometry import LineString
+    if distance is None:
+        return line
+    n_points = max(2, int(line.length / distance))
+    pts = [line.interpolate(i / n_points, normalized=True) for i in range(n_points + 1)]
+    return LineString(pts)
+
+
+def create_gmesh(polygons_file, with_interior_lines=True, max_distance=None, border_resample_distance=None):
+    """Create a gmsh mesh from a polygon file.
+
+    Args:
+        polygons_file (str): Path to the polygon/shapefile (.gpkg, .shp, …).
+        with_interior_lines (bool): Whether to embed interior polygon edges as
+            constraints so the mesher respects them.
+        max_distance (float): Maximum element characteristic length (controls
+            mesh resolution). Passed to Mesh.CharacteristicLengthMax.
+        border_resample_distance (float): Spacing used to resample the outer
+            boundary before building the GMSH geometry. If None the original
+            vertices are used as-is.
+
+    Returns:
+        Mesh: populated Mesh object.
+    """
+    if pygmsh is None or gmsh is None:
+        raise ImportError("pygmsh and gmsh are required for create_gmesh. Install with: pip install gmsh pygmsh")
+    import geopandas as gpd
+
+    gdf = gpd.read_file(polygons_file)
+    boundary_coords = np.array(resample_line(gdf.union_all().boundary, border_resample_distance).coords)
+
+    with pygmsh.occ.Geometry() as geom:
+        # Outer boundary
+        boundary_points = [geom.add_point(p) for p in boundary_coords[:-1]]
+        boundary_lines = [
+            geom.add_line(boundary_points[i], boundary_points[i + 1])
+            for i in range(len(boundary_points) - 1)
+        ]
+        boundary_lines.append(geom.add_line(boundary_points[-1], boundary_points[0]))
+
+        loop = geom.add_curve_loop(boundary_lines)
+        surface = geom.add_plane_surface(loop)
+
+        if with_interior_lines:
+            split_curves = []
+            for geom_shape in gdf.geometry:
+                coords = list(geom_shape.exterior.coords)
+                if len(coords) < 2:
+                    continue
+                pts = [geom.add_point(p) for p in coords]
+                for i in range(len(pts) - 1):
+                    split_curves.append(geom.add_line(pts[i], pts[i + 1]))
+            geom.boolean_fragments([surface], split_curves)
+
+        gmsh.option.setNumber("Mesh.Algorithm", 8)  # Frontal-Delaunay for quads
+        if max_distance is not None:
+            gmsh.option.setNumber("Mesh.CharacteristicLengthMax", max_distance)
+
+        gmesh = geom.generate_mesh(dim=2)
+
+    mesh = Mesh()
+    mesh._import_from_gmsh(gmesh)
+    return mesh
+
+
 def create_mesh_dhydro(polygon_file='random_polygon.pol', number_of_multiscales=4,
                        for_simulation=True):
     '''Creates a fine mesh or a multiscale mesh using meshkernel
@@ -775,6 +943,87 @@ class Mesh(object):
         self.edge_type = np.ones(self.edge_index.shape[1])
         self.edge_type[boundary_edge_id] = 3
         self.boundary_edges = self.edge_index[:,self.edge_type > 1].T
+        self._get_derived_attributes()
+
+    def _import_from_gmsh(self, mesh):
+        """Import mesh from a meshio GMSH mesh object and populate Mesh attributes.
+
+        Args:
+            mesh: meshio.Mesh object (output of pygmsh geometry.generate_mesh())
+        """
+        from collections import defaultdict
+
+        self.node_x = mesh.points[:, 0]
+        self.node_y = mesh.points[:, 1]
+        self.node_xy = mesh.points[:, :2]
+
+        tri_cells = []
+        quad_cells = []
+        for cell_block in mesh.cells:
+            if cell_block.type == "triangle":
+                tri_cells.extend(cell_block.data.tolist())
+            elif cell_block.type == "quad":
+                quad_cells.extend(cell_block.data.tolist())
+
+        tri_cells = np.array(tri_cells, dtype=int) if tri_cells else np.empty((0, 3), dtype=int)
+        quad_cells = np.array(quad_cells, dtype=int) if quad_cells else np.empty((0, 4), dtype=int)
+
+        if len(tri_cells) > 0 and len(quad_cells) > 0:
+            tri_cells_padded = np.pad(tri_cells, ((0, 0), (0, 1)), constant_values=-1)
+            elements = np.vstack([tri_cells_padded, quad_cells])
+        elif len(tri_cells) > 0:
+            elements = np.pad(tri_cells, ((0, 0), (0, 1)), constant_values=-1)
+        elif len(quad_cells) > 0:
+            elements = quad_cells
+        else:
+            elements = np.empty((0, 4), dtype=int)
+
+        self.nodes_per_face = np.array([np.sum(e != -1) for e in elements])
+        self.face_nodes = np.concatenate([e[e != -1] for e in elements])
+
+        face_centroids = []
+        for e in elements:
+            valid_nodes = e[e != -1]
+            face_centroids.append(self.node_xy[valid_nodes].mean(axis=0))
+        self.face_xy = np.array(face_centroids)
+        self.face_x = self.face_xy[:, 0]
+        self.face_y = self.face_xy[:, 1]
+
+        edge_set = set()
+        for e in elements:
+            valid_nodes = e[e != -1]
+            n = len(valid_nodes)
+            for i in range(n):
+                a, b = valid_nodes[i], valid_nodes[(i + 1) % n]
+                edge_set.add(tuple(sorted((a, b))))
+        self.edge_index = np.array(list(edge_set), dtype=int).T
+
+        edge_to_faces = defaultdict(list)
+        for face_idx, e in enumerate(elements):
+            valid_nodes = e[e != -1]
+            n = len(valid_nodes)
+            for i in range(n):
+                a, b = valid_nodes[i], valid_nodes[(i + 1) % n]
+                edge_to_faces[tuple(sorted((a, b)))].append(face_idx)
+
+        self.edge_type = np.array(
+            [3 if len(edge_to_faces[tuple(edge)]) == 1 else 1 for edge in self.edge_index.T]
+        )
+
+        dual_edges = []
+        for edge, faces in edge_to_faces.items():
+            if len(faces) == 2:
+                a, b = faces
+                if a < b:
+                    dual_edges.append([a, b])
+        self.dual_edge_index = np.array(dual_edges).T if dual_edges else np.empty((2, 0), dtype=int)
+        self.dual_edge_index = to_undirected(torch.LongTensor(self.dual_edge_index)).numpy()
+
+        boundary_edges = [list(edge) for edge, faces in edge_to_faces.items() if len(faces) == 1]
+        self.boundary_edges = np.array(boundary_edges, dtype=int)
+        self.boundary_nodes = np.unique(self.boundary_edges.flatten())
+        self.boundary_node_xy = self.node_xy[self.boundary_nodes]
+
         self._get_derived_attributes()
 
     def _import_from_sfincs_map(self, nc_file):
@@ -1713,7 +1962,7 @@ def update_ghost_cells_attributes(mesh, *attributes):
     return attributes
 
 def convert_mesh_to_pyg(netcdf_file, DEM_file, BC, polygon_file=None, type_BC=2,
-                        with_multiscale=False, number_of_multiscales=4,
+                        with_multiscale=False, number_of_multiscales=4, mesh_resolutions=None,
                         neighborhood_size_slope=150, min_neighbours_slope=5):
     '''
     Creates a pytorch geometric Data object of a mesh simulation
@@ -1754,8 +2003,18 @@ def convert_mesh_to_pyg(netcdf_file, DEM_file, BC, polygon_file=None, type_BC=2,
 
     if with_multiscale:
         assert polygon_file is not None, 'polygon_file must be provided if with_multiscale is True'
-        # create multiscale meshes
-        meshes = create_mesh_dhydro(polygon_file, number_of_multiscales-1, for_simulation=False)
+        n_scales = number_of_multiscales - 1
+        if mesh_resolutions is None:
+            import geopandas as gpd
+            _bounds = gpd.read_file(polygon_file).union_all().bounds
+            _diag = np.sqrt((_bounds[2] - _bounds[0])**2 + (_bounds[3] - _bounds[1])**2)
+            _resolutions = [_diag / (2**i) for i in range(n_scales - 1, -1, -1)]
+        else:
+            _resolutions = list(mesh_resolutions)[:n_scales]
+        meshes = [
+            create_gmesh(polygon_file, with_interior_lines=False, max_distance=d, border_resample_distance=d)
+            for d in _resolutions
+        ]
         meshes.append(copy(meshes[0]))
         meshes[-1]._import_from_map_netcdf(netcdf_file)
         meshes[-1].edge_outward_normal[meshes[-1].edge_BC] *= -1  # reverse the normal of the boundary edges

@@ -114,7 +114,7 @@ def interpolate_time_series(source_points, grid_3d, target_points, label):
 def parse_src_file(src_path):
     """Read SFINCS source file: returns array of shape [n_src, 2] (x, y) in model CRS."""
     pts = []
-    with open(src_path) as f:
+    with open(src_path, encoding='latin-1') as f:
         for line in f:
             parts = line.strip().split()
             if len(parts) >= 2:
@@ -159,11 +159,24 @@ def build_output_data(template_data, WD, VX, VY,
     time_steps = WD.shape[1]
 
     if src_xy is not None and dis_times_s is not None and discharge is not None and map_times_s is not None:
-        # Find nearest mesh node for each source point
-        face_xy = np.asarray(data.mesh.face_xy)
-        node_bc_indices = find_nearest_mesh_nodes(src_xy, face_xy)
+        # Find nearest BOUNDARY face of the finest mesh level for each source point.
+        # face_bnd lists faces adjacent to at least one inactive cell (domain perimeter).
+        # This keeps BCs at the domain border, consistent with how the model was trained.
+        finest_mesh = data.mesh.meshes[-1] if hasattr(data.mesh, 'meshes') else data.mesh
+        if hasattr(finest_mesh, 'face_bnd') and len(finest_mesh.face_bnd) > 0:
+            # Offset of finest-mesh faces in the global multiscale face array
+            finest_offset = int(data.node_ptr[-2]) if hasattr(data, 'node_ptr') else 0
+            local_bnd_ids  = np.asarray(finest_mesh.face_bnd)
+            global_bnd_ids = local_bnd_ids + finest_offset
+            bnd_face_xy    = np.asarray(finest_mesh.face_xy)[local_bnd_ids]
+            local_idx      = find_nearest_mesh_nodes(np.asarray(src_xy), bnd_face_xy)
+            node_bc_indices = global_bnd_ids[local_idx].astype(np.int32)
+            print(f"  Mapped {len(node_bc_indices)} source points to BOUNDARY mesh nodes: {node_bc_indices}")
+        else:
+            face_xy = np.asarray(data.mesh.face_xy)
+            node_bc_indices = find_nearest_mesh_nodes(src_xy, face_xy)
+            print(f"  Mapped {len(node_bc_indices)} source points to mesh nodes (fallback): {node_bc_indices}")
         n_bc = len(node_bc_indices)
-        print(f"  Mapped {n_bc} source points to mesh nodes: {node_bc_indices}")
 
         # Interpolate discharge from sfincs.dis time grid to map output times
         # discharge shape: [T_dis, n_src]

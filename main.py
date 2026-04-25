@@ -183,8 +183,13 @@ def main(config):
     print('Training and testing finished!')
 
 if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', default='config.yaml', help='Path to YAML config file')
+    args, _ = parser.parse_known_args()
+
     # Read configuration file with parameters
-    cfg = read_config('config.yaml')
+    cfg = read_config(args.config)
 
     wandb_logger = WandbLogger(
         log_model=True,
