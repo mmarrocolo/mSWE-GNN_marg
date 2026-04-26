@@ -23,4 +23,4 @@ cd $SLURM_SUBMIT_DIR
 export WANDB_MODE=offline
 
 # --- run fine-tuning ---
-python main.py --config config_finetune_100m_small.yaml 2>&1 | tee logs/${SLURM_JOB_ID}_finetune.log
+python finetune_ahr.py --config config_finetune_100m_small.yaml 2>&1 | tee logs/${SLURM_JOB_ID}_finetune.log
