@@ -38,7 +38,7 @@ temporal_dataset_parameters:
   rollout_steps : 12
   previous_t    : 3
   time_start    : 0
-  time_stop     : -1
+  time_stop     : 40     # limit to first 40 h to concentrate gradient on dry-to-wet transition
 
 # Model — reduced size for initial test
 models:
@@ -64,9 +64,9 @@ trainer_options:
   batch_size            : 4     # conservative for GPU memory
   conservation          : 0
   velocity_scaler       : 7
-  curriculum_epoch      : 30
-  patience              : 200
-  max_epochs            : 200
+  curriculum_epoch      : 5      # reach rollout_steps=12 by epoch 55 (was 30→only reached 7/12)
+  patience              : 300
+  max_epochs            : 500
 
 # learning rate — lower for fine-tuning
 lr_info:
