@@ -241,7 +241,7 @@ def main():
     os.makedirs("results", exist_ok=True)
     fig, _ = spatial_analyser.plot_CSI_rollouts(water_thresholds=[0.05, 0.3])
     plt.savefig("results/CSI.png")
-    plt.close(fig)
+    plt.close('all')
 
     best_id = rollout_loss.mean(1).argmin().item()
     worst_id = rollout_loss.mean(1).argmax().item()
@@ -256,7 +256,7 @@ def main():
         else:
             fig = rollout_plotter.explore_rollout()
         plt.savefig(f"results/simulation_{name}.png")
-        plt.close(fig)
+        plt.close('all')
 
     print("Fine-tuning and evaluation finished!")
 
