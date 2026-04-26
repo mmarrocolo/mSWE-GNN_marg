@@ -35,7 +35,7 @@ selected_edge_features:
 
 # temporal training dataset
 temporal_dataset_parameters:
-  rollout_steps : 3          # reduced from 6 for faster first run
+  rollout_steps : 12
   previous_t    : 3
   time_start    : 0
   time_stop     : -1
@@ -64,9 +64,9 @@ trainer_options:
   batch_size            : 4     # conservative for GPU memory
   conservation          : 0
   velocity_scaler       : 7
-  curriculum_epoch      : 20
-  patience              : 150
-  max_epochs            : 150
+  curriculum_epoch      : 30
+  patience              : 200
+  max_epochs            : 200
 
 # learning rate — lower for fine-tuning
 lr_info:
