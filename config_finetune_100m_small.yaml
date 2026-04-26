@@ -64,9 +64,9 @@ trainer_options:
   batch_size            : 4     # conservative for GPU memory
   conservation          : 0
   velocity_scaler       : 7
-  curriculum_epoch      : 8     # reduced from 20
-  patience              : 15    # reduced from 50
-  max_epochs            : 30    # reduced from 150
+  curriculum_epoch      : 20
+  patience              : 150
+  max_epochs            : 150
 
 # learning rate — lower for fine-tuning
 lr_info:
