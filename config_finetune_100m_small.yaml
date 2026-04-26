@@ -43,8 +43,8 @@ temporal_dataset_parameters:
 # Model — reduced size for initial test
 models:
   model_type              : 'MSGNN'
-  hid_features            : 32   # reduced from 64
-  mlp_layers              : 2    # reduced from 3
+  hid_features            : 64   # reduced from 64
+  mlp_layers              : 3    # reduced from 3
   seed                    : 666
   learned_residuals       : True
   mlp_activation          : 'prelu'
@@ -54,7 +54,7 @@ models:
   with_filter_matrix      : True
   with_gradient           : True
   with_WL                 : True
-  K                       : 3    # reduced from 4
+  K                       : 4    # reduced from 4
   learned_pooling         : False
   skip_connections        : True
 

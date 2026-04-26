@@ -92,6 +92,8 @@ def get_numerical_times(dataset_name, dataset_size, temporal_res, maximum_time,
                    'multiscale_mesh_dataset_test': mesh_dataset_test_id,
                    'dijkring_15_train': dijk15_train_id,
                    'dijkring_15_test': dijk15_test_id,
+                   'ahr_river_v03_marg_additionalsrc_100m_cutpolygon_test': dijk15_test_id,
+                   'ahr_river_v03_marg_additionalsrc_100m_cutpolygon_train': dijk15_train_id,
                    }
 
     ids = dataset_ids.get(dataset_name)
