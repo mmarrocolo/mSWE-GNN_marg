@@ -1,13 +1,13 @@
 #!/bin/bash
 #SBATCH --job-name=mswe-gnn-finetune
 #SBATCH --account=education-ceg-msc-envm
-#SBATCH --partition=gpu
+#SBATCH --partition=gpu-v100
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=4
-#SBATCH --gpus-per-node=1
+#SBATCH --gpus-per-task=1
 #SBATCH --time=12:00:00
-#SBATCH --mem=32G
+#SBATCH --mem-per-cpu=5333M
 #SBATCH --output=logs/%j_finetune.out
 #SBATCH --error=logs/%j_finetune.err
 
