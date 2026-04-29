@@ -1034,13 +1034,19 @@ class Mesh(object):
         """
         ds = xr.open_dataset(nc_file, decode_times=False)
 
-        x   = ds.coords['x'].values                      # (n_rows, n_cols) cell centers
-        y   = ds.coords['y'].values
+        x   = ds.coords['x'].values                      # 1-D (n_cols,) or 2-D (n_rows, n_cols)
+        y   = ds.coords['y'].values                      # 1-D (n_rows,) or 2-D (n_rows, n_cols)
         cx  = ds['corner_x'].values                       # (n_rows+1, n_cols+1) corners
         cy  = ds['corner_y'].values
         msk = ds['msk'].values.astype(np.int32)           # (n_rows, n_cols)
 
-        n_rows, n_cols = x.shape
+        n_rows, n_cols = msk.shape
+
+        # Build 2-D coordinate grids when the netCDF stores 1-D axis vectors
+        if x.ndim == 2 and y.ndim == 2:
+            x2d, y2d = x, y
+        else:
+            x2d, y2d = np.meshgrid(x, y, indexing='xy')  # (n_rows, n_cols) each
 
         # Active faces
         active_flat = np.flatnonzero(msk > 0)
@@ -1048,8 +1054,8 @@ class Mesh(object):
         active_mi   = active_flat % n_cols
         n_faces     = len(active_flat)
 
-        self.face_x = x.flat[active_flat].astype(np.float64)
-        self.face_y = y.flat[active_flat].astype(np.float64)
+        self.face_x = x2d[msk > 0].astype(np.float64)
+        self.face_y = y2d[msk > 0].astype(np.float64)
 
         cell_to_face = np.full(n_rows * n_cols, -1, dtype=np.int32)
         cell_to_face[active_flat] = np.arange(n_faces, dtype=np.int32)

@@ -1,0 +1,15 @@
+{
+"type": "FeatureCollection",
+"name": "obs",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::32632" } },
+"features": [
+{ "type": "Feature", "properties": { "name": "Altenahr" }, "geometry": { "type": "Point", "coordinates": [ 357406.099999999976717, 5598012.5 ] } },
+{ "type": "Feature", "properties": { "name": "Bad Bodendorf" }, "geometry": { "type": "Point", "coordinates": [ 373617.299999999988358, 5601374.0 ] } },
+{ "type": "Feature", "properties": { "name": "Kreuzberg" }, "geometry": { "type": "Point", "coordinates": [ 355899.799999999988358, 5597311.0 ] } },
+{ "type": "Feature", "properties": { "name": "Denn" }, "geometry": { "type": "Point", "coordinates": [ 356729.200000000011642, 5594385.599999999627471 ] } },
+{ "type": "Feature", "properties": { "name": "Niederadenau" }, "geometry": { "type": "Point", "coordinates": [ 353114.5, 5589087.400000000372529 ] } },
+{ "type": "Feature", "properties": { "name": "Kirmutscheid" }, "geometry": { "type": "Point", "coordinates": [ 346396.599999999976717, 5582150.0 ] } },
+{ "type": "Feature", "properties": { "name": "Müsch_2" }, "geometry": { "type": "Point", "coordinates": [ 345529.299999999988358, 5583757.200000000186265 ] } },
+{ "type": "Feature", "properties": { "name": "Müsch" }, "geometry": { "type": "Point", "coordinates": [ 345552.700000000011642, 5583999.0 ] } }
+]
+}
