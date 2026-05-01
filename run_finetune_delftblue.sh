@@ -23,5 +23,20 @@ cd $SLURM_SUBMIT_DIR
 # --- disable wandb online sync (no internet on compute nodes) ---
 export WANDB_MODE=offline
 
+# --- build PKL dataset if not already present ---
+DATASET=database/datasets/train/ahr_river_v03_marg_additionalsrc_velocity_100m_cutpolygon.pkl
+SFINCS_DIR=database/raw_datasets_ahr/Simulations/ahr_river_v03_Marg_additionalsrc_velocity_100m_cutpolygon
+
+if [ ! -f "$DATASET" ]; then
+    python database/convert_sfincs_to_pkl_marg.py \
+        --sfincs-map   "$SFINCS_DIR/sfincs_map.nc" \
+        --template-pkl database/datasets/train/template_100m.pkl \
+        --dataset-name ahr_river_v03_marg_additionalsrc_velocity_100m_cutpolygon \
+        --out-root     database/datasets \
+        --src-file     "$SFINCS_DIR/sfincs.src" \
+        --dis-file     "$SFINCS_DIR/sfincs.dis" \
+        2>&1 | tee logs/${SLURM_JOB_ID}_dataset.log
+fi
+
 # --- run fine-tuning ---
 python finetune_ahr.py --config config_finetune_100m_velocity.yaml 2>&1 | tee logs/${SLURM_JOB_ID}_finetune.log
