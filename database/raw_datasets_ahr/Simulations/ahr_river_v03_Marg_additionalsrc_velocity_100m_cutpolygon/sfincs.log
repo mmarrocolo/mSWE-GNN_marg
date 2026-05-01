@@ -1,0 +1,112 @@
+
+------------ Welcome to SFINCS ------------
+
+  @@@@@  @@@@@@@ @@ @@  @@   @@@@   @@@@@
+ @@@ @@@ @@@@@@@ @@ @@@ @@ @@@@@@@ @@@ @@@
+ @@@     @@      @@ @@@ @@ @@   @@ @@@
+  @@@@@  @@@@@@  @@ @@@@@@ @@       @@@@@
+     @@@ @@      @@ @@ @@@ @@   @@     @@@
+ @@@ @@@ @@      @@ @@  @@  @@@@@@ @@@ @@@
+  @@@@@  @@      @@ @@   @   @@@@   @@@@@
+
+              ..............
+          ......:@@@@@@@@:......
+       ..::::..@@........@@.:::::..
+     ..:::::..@@..::..::..@@.::::::..
+    .::::::..@@............@@.:::::::.
+   .::::::..@@..............@@.:::::::.
+  .::::::::..@@............@@..::::::::.
+ .:::::::::...@@.@..@@..@.@@..::::::::::.
+ .:::::::::...:@@@..@@..@@@:..:::::::::..
+ ............@@.@@..@@..@@.@@............
+ ^^^~~^^~~^^@@..............@@^^^~^^^~~^^
+ .::::::::::@@..............@@.:::::::::.
+  .......:.@@.....@.....@....@@.:.......
+   .::....@@......@.@@@.@....@@.....::.
+    .:::~@@.:...:.@@...@@.:.:.@@~::::.
+     .::~@@@@@@@@@@.....@@@@@@@@@~::.
+       ..:~~~~~~~:.......:~~~~~~~:..
+          ......................
+              ..............
+
+------------------------------------------
+
+Build-Revision: $Rev: v2.3.0 mt. Faber Release
+Build-Date: $Date: 2025-11-18
+
+------ Preparing model simulation --------
+
+Reading input file ...
+Info    : input grid interpreted as projected coordinates
+Info    : turning off Coriolis
+Info    : no Coriolis, as latitude is not specified in sfincs.inp
+Info    : running SFINCS with subgrid bathymetry
+Info    : storing mean depth in subgrid cell for hmax output
+Info    : turning on process: Viscosity
+Info    : turning on advection
+Info    : advection scheme : first-order upwind
+Reading meteo data ...
+Preparing domain ...
+Info    : using regular mesh
+Info    : reading index file sfincs.ind
+Info    : reading mask file : sfincs.msk
+------------------------------------------
+Computational mesh
+------------------------------------------
+Number of active z points      :     24994
+Number of active u/v points    :     49324
+Info    : viscosity - nuvisc  =  0.100E+01
+Info   : reading sub-grid netCDF file
+Info    : number of subgrid levels : 10
+Info    : reading observation points
+Info    : observation point 1 : "Altenahr" nm=8553 n=163 m=126 iref=1 z=161.302
+Info    : observation point 2 : "Bad Bodendorf" nm=22835 n=196 m=288 iref=1 z=66.556
+Info    : observation point 3 : "Kreuzberg" nm=7395 n=156 m=110 iref=1 z=179.986
+Info    : observation point 4 : "Denn" nm=8058 n=126 m=119 iref=1 z=192.212
+Info    : observation point 5 : "Niederadenau" nm=5518 n=73 m=83 iref=1 z=222.629
+Info    : observation point 6 : "Kirmutscheid" nm=814 n=4 m=15 iref=1 z=318.819
+Info    : observation point 7 : "Müsch_2" nm=226 n=20 m=7 iref=1 z=293.637
+Info    : observation point 8 : "Müsch" nm=228 n=22 m=7 iref=1 z=293.000
+Info    : reading discharges
+
+------------------------------------------
+Processes
+------------------------------------------
+Subgrid topography   : yes
+Quadtree refinement  : no
+Advection            : yes
+Viscosity            : yes
+Coriolis             : no
+Wind                 : no
+Atmospheric pressure : no
+Precipitation        : no
+Infiltration         : no
+SnapWave             : no
+Wave paddles         : no
+------------------------------------------
+
+Initializing output ...
+
+---------- Starting simulation -----------
+---- Using 1 of 4 available threads ----
+
+   0% complete,       - s remaining ...
+   5% complete,     8.1 s remaining ...
+  10% complete,     7.7 s remaining ...
+  15% complete,     7.4 s remaining ...
+  20% complete,     7.1 s remaining ...
+  25% complete,     6.8 s remaining ...
+  30% complete,     6.4 s remaining ...
+  35% complete,     6.0 s remaining ...
+  40% complete,     5.7 s remaining ...
+  45% complete,     5.3 s remaining ...
+  50% complete,     4.9 s remaining ...
+  55% complete,     4.8 s remaining ...
+  60% complete,     5.1 s remaining ...
+  65% complete,     5.6 s remaining ...
+  70% complete,     5.4 s remaining ...
+  75% complete,     4.9 s remaining ...
+  80% complete,     4.1 s remaining ...
+  85% complete,     4.0 s remaining ...
+  90% complete,     2.7 s remaining ...
+  95% complete,     1.3 s remaining ...
