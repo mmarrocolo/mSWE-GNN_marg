@@ -6,6 +6,7 @@
 *.nc
 !database/raw_datasets_ahr/Simulations/ahr_river_v03_Marg_additionalsrc_cutpolygon/sfincs_map.nc
 !database/raw_datasets_ahr/Simulations/ahr_river_v03_Marg_additionalsrc_cutpolygon/sfincs_his.nc
+!database/raw_datasets_ahr/Simulations/ahr_river_v03_Marg_additionalsrc_velocity_100m_cutpolygon/sfincs_map.nc
 __pycache__
 *.pyc
 lightning_logs
