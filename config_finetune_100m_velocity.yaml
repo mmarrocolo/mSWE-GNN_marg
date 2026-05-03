@@ -35,7 +35,7 @@ selected_edge_features:
 
 # temporal training dataset
 temporal_dataset_parameters:
-  rollout_steps : 40
+  rollout_steps : 20
   previous_t    : 3
   time_start    : 0
   time_stop     : -1
@@ -61,7 +61,7 @@ models:
 trainer_options:
   type_loss             : 'RMSE'
   only_where_water      : True
-  batch_size            : 2
+  batch_size            : 1
   conservation          : 0
   velocity_scaler       : 7
   curriculum_epoch      : 5

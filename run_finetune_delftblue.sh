@@ -23,6 +23,7 @@ cd $SLURM_SUBMIT_DIR
 # --- disable wandb online sync (no internet on compute nodes) ---
 export WANDB_MODE=offline
 export PYTHONPATH=$SLURM_SUBMIT_DIR
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # --- build PKL dataset if not already present ---
 DATASET=database/datasets/train/ahr_river_v03_marg_additionalsrc_velocity_100m_cutpolygon.pkl
