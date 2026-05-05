@@ -45,6 +45,8 @@ def parse_args():
                    help="Path to save the fine-tuned model checkpoint")
     p.add_argument("--checkpoint-dir", default="lightning_logs/finetune_ahr",
                    help="Directory for Lightning checkpoints during training")
+    p.add_argument("--resume", default=None,
+                   help="Path to a Lightning checkpoint to resume training from")
     return p.parse_args()
 
 
@@ -170,7 +172,7 @@ def main():
     )
 
     print("Starting fine-tuning...")
-    trainer.fit(plmodule, pldatamodule)
+    trainer.fit(plmodule, pldatamodule, ckpt_path=args.resume)
 
     # Load best checkpoint (fall back to last if val_loss was never improved)
     best_ckpt = checkpoint_callback.best_model_path or checkpoint_callback.last_model_path

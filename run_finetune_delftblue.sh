@@ -40,5 +40,14 @@ if [ ! -f "$DATASET" ]; then
         2>&1 | tee logs/${SLURM_JOB_ID}_dataset.log
 fi
 
+# --- resume from last checkpoint if one exists ---
+LAST_CKPT=$(ls -t lightning_logs/finetune_ahr/last*.ckpt 2>/dev/null | head -1)
+if [ -n "$LAST_CKPT" ]; then
+    echo "Resuming from checkpoint: $LAST_CKPT"
+    RESUME_FLAG="--resume $LAST_CKPT"
+else
+    RESUME_FLAG=""
+fi
+
 # --- run fine-tuning ---
-python finetune_ahr.py --config config_finetune_100m_velocity.yaml 2>&1 | tee logs/${SLURM_JOB_ID}_finetune.log
+python finetune_ahr.py --config config_finetune_100m_velocity.yaml $RESUME_FLAG 2>&1 | tee logs/${SLURM_JOB_ID}_finetune.log
