@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=mswe-gnn-finetune
 #SBATCH --account=education-ceg-msc-envm
-#SBATCH --partition=gpu-v100
+#SBATCH --partition=gpu-a100
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=4
