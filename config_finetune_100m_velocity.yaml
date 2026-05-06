@@ -43,7 +43,7 @@ temporal_dataset_parameters:
 # Model — same architecture as previous fine-tuning run
 models:
   model_type              : 'MSGNN'
-  hid_features            : 64
+  hid_features            : 32
   mlp_layers              : 3
   seed                    : 666
   learned_residuals       : True
@@ -54,14 +54,14 @@ models:
   with_filter_matrix      : True
   with_gradient           : True
   with_WL                 : True
-  K                       : 4
+  K                       : 2
   learned_pooling         : False
   skip_connections        : True
 
 trainer_options:
   type_loss             : 'RMSE'
   only_where_water      : True
-  batch_size            : 1
+  batch_size            : 2
   conservation          : 0
   velocity_scaler       : 7
   curriculum_epoch      : 5

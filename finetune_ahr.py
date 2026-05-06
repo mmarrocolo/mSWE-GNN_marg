@@ -169,6 +169,7 @@ def main():
         enable_progress_bar=True,
         logger=wandb_logger,
         callbacks=[checkpoint_callback, curriculum_callback, early_stopping],
+        check_val_every_n_epoch=10,
     )
 
     print("Starting fine-tuning...")
