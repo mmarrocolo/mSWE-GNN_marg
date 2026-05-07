@@ -194,12 +194,10 @@ class DataModule(L.LightningDataModule):
 
     def train_dataloader(self):
         return DataLoader(self.temporal_train_dataset, batch_size=self.batch_size,
-                          num_workers=3, persistent_workers=True,
                           shuffle=True)
 
     def val_dataloader(self):
         return DataLoader(self.temporal_val_dataset, batch_size=self.batch_size,
-                          num_workers=3, persistent_workers=True,
                           shuffle=False)
 
     def setup(self, stage=None):
