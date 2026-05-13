@@ -43,7 +43,7 @@ temporal_dataset_parameters:
 # Model — same architecture as previous fine-tuning run
 models:
   model_type              : 'MSGNN'
-  hid_features            : 32
+  hid_features            : 64
   mlp_layers              : 3
   seed                    : 666
   learned_residuals       : True
@@ -54,7 +54,7 @@ models:
   with_filter_matrix      : True
   with_gradient           : True
   with_WL                 : True
-  K                       : 2
+  K                       : 4
   learned_pooling         : False
   skip_connections        : True
 
@@ -75,4 +75,4 @@ lr_info:
   gamma           : 0.7
   step_size       : 10
 
-saved_model: 'results/finetuned_ahr_velocity.h5'
+saved_model: 'results/finetuned_dk15.h5'
