@@ -41,8 +41,8 @@ if [ ! -f "$DATASET" ]; then
 fi
 
 # --- resume from last checkpoint if one exists ---
-LAST_CKPT=$(ls -t lightning_logs/finetune_ahr/last*.ckpt 2>/dev/null | head -1)
-if [ -n "$LAST_CKPT" ]; then
+if [ -f "lightning_logs/finetune_ahr/last.ckpt" ]; then
+    LAST_CKPT="lightning_logs/finetune_ahr/last.ckpt"
     echo "Resuming from checkpoint: $LAST_CKPT"
     RESUME_FLAG="--resume $LAST_CKPT"
 else
