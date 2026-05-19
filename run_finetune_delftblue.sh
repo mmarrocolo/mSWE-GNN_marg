@@ -20,7 +20,7 @@ conda activate mswe-gnn
 # --- move to repo root ---
 cd $SLURM_SUBMIT_DIR
 
-# --- disable wandb online sync (no internet on compute nodes) ---
+# wandb runs offline on compute nodes (no internet); sync manually after job with: wandb sync wandb/offline-run-*/
 export WANDB_MODE=offline
 export PYTHONPATH=$SLURM_SUBMIT_DIR
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
