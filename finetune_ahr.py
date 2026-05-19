@@ -55,8 +55,12 @@ def main():
 
     cfg = read_config(args.config)
 
-    wandb_logger = WandbLogger(log_model=True, config=cfg)
-    wandb.init(config=cfg)
+    rollout_steps = cfg['temporal_dataset_parameters']['rollout_steps']
+    hid_features  = cfg['models']['hid_features']
+    run_name = f"rollout{rollout_steps}_hid{hid_features}"
+
+    wandb.init(project="mswe-gnn-ahr", name=run_name, config=cfg)
+    wandb_logger = WandbLogger(project="mswe-gnn-ahr", name=run_name, log_model=True, config=cfg)
     fix_dict_in_config(wandb)
     config = wandb.config
 
