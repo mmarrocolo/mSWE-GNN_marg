@@ -87,9 +87,7 @@ def main():
     )
 
     temporal_train_dataset = to_temporal_dataset(train_dataset, **temporal_dataset_parameters)
-    # Validate with same window length as training so val_loss is a meaningful early-stopping signal.
-    # Full-rollout evaluation is done after training in the evaluation block below.
-    temporal_val_dataset = to_temporal_dataset(train_dataset, **temporal_dataset_parameters)
+    temporal_val_dataset   = to_temporal_dataset(train_dataset, rollout_steps=-1, **temporal_test_dataset_parameters)
 
     print('Number of training simulations:\t', len(train_dataset))
     print('Number of training samples:\t', len(temporal_train_dataset))
@@ -169,7 +167,6 @@ def main():
         enable_progress_bar=True,
         logger=wandb_logger,
         callbacks=[checkpoint_callback, curriculum_callback, early_stopping],
-        check_val_every_n_epoch=10,
     )
 
     print("Starting fine-tuning...")
