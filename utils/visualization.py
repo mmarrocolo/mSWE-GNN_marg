@@ -16,7 +16,8 @@ from utils.miscellaneous import get_time_vector, get_mass_conservation_loss, get
 from utils.miscellaneous import get_velocity, get_Froude
 from utils.dataset import get_input_water, get_inflow_volume, to_temporal, separate_multiscale_node_features
 from training.loss import get_mean_error
-from training.train import rollout_test
+# from training.train import rollout_test
+from training.train import rollout_test, rollout_test_warmstart
 from utils.scaling import get_none_scalers
 
 WD_color = LinearSegmentedColormap.from_list('', ['white', 'MediumBlue'])
@@ -523,7 +524,8 @@ class PlotRollout():
     type_loss: str,     type of loss used to compute summed differences
     **temporal_test_dataset_parameters: dict,    parameters for temporal dataset
     '''
-    def __init__(self, model, dataset, scalers=None, type_loss='RMSE', **temporal_test_dataset_parameters):
+    # def __init__(self, model, dataset, scalers=None, type_loss='RMSE', **temporal_test_dataset_parameters):
+    def __init__(self, model, dataset, scalers=None, type_loss='RMSE', warmup_steps=0, **temporal_test_dataset_parameters):
         super().__init__()
         self.time_start = temporal_test_dataset_parameters['time_start']
         self.time_stop = temporal_test_dataset_parameters['time_stop']
@@ -554,10 +556,19 @@ class PlotRollout():
         self.breach_coordinates = [self.pos[node.item()] for node in self.dataset.node_BC]
 
         # get rollouts
-        self.predicted_rollout = rollout_test(model, temporal_dataset).detach()
+        # self.predicted_rollout = rollout_test(model, temporal_dataset).detach()
+        self.predicted_rollout = rollout_test_warmstart(model, temporal_dataset, warmup_steps=warmup_steps).detach()
         self.real_rollout = temporal_dataset.y.detach()
         self.diff_rollout = self.predicted_rollout - self.real_rollout
         self.input_water = get_input_water(temporal_dataset).unsqueeze(-1)
+
+        # scale-0 (finest-scale) rollouts stored for debugging/comparison only
+        if isinstance(dataset.mesh, MultiscaleMesh):
+            self._predicted_rollout_s0 = separate_multiscale_node_features(self.predicted_rollout, dataset.node_ptr)[0]
+            self._real_rollout_s0      = separate_multiscale_node_features(self.real_rollout,      dataset.node_ptr)[0]
+        else:
+            self._predicted_rollout_s0 = self.predicted_rollout
+            self._real_rollout_s0      = self.real_rollout
 
         # get maps
         self._get_maps(self.real_rollout, self.predicted_rollout, self.diff_rollout, self.input_water, self.DEM)
@@ -1085,9 +1096,11 @@ class PlotRollout():
         HTML(self.anim.to_html5_video())
 
     def _get_CSI(self, water_threshold=0):
+        # previously: return get_CSI(self._predicted_rollout_s0, self._real_rollout_s0, water_threshold=water_threshold)
         return get_CSI(self.predicted_rollout, self.real_rollout, water_threshold=water_threshold)
-        
+
     def _get_F1(self, water_threshold=0):
+        # previously: return get_F1(self._predicted_rollout_s0, self._real_rollout_s0, water_threshold=water_threshold)
         return get_F1(self.predicted_rollout, self.real_rollout, water_threshold=water_threshold)
 
     def _plot_metric(self, metric_name='CSI', water_thresholds=[0.05, 0.3], ax=None):
@@ -1153,5 +1166,6 @@ class PlotRollout():
         return ax
 
     def _get_rollout_loss(self, type_loss='RMSE', only_where_water=False):
-        return get_rollout_loss(self.predicted_rollout, self.real_rollout, 
+        # previously: return get_rollout_loss(self._predicted_rollout_s0, self._real_rollout_s0, ...)
+        return get_rollout_loss(self.predicted_rollout, self.real_rollout,
                                 type_loss=type_loss, only_where_water=only_where_water)

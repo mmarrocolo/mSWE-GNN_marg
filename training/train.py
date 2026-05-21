@@ -94,6 +94,44 @@ def rollout_test(model, batch):
     
     return torch.stack(predicted_rollout, -1)
 
+
+@torch.no_grad()
+def rollout_test_warmstart(model, batch, warmup_steps=0):
+    '''Like rollout_test but teacher-forces ground truth for the first warmup_steps to seed
+    a non-zero initial state before switching to autoregressive rollout.
+    ------
+    model: nn.Model
+    batch: torch_geometric.data.data.Data or Batch
+    warmup_steps: int
+        number of leading steps where ground-truth output is fed back instead of model prediction
+    '''
+    if isinstance(batch, Batch):
+        temp = adapt_batch_training(batch)
+    else:
+        temp = batch.clone()
+
+    dynamic_vars = model.previous_t * model.NUM_WATER_VARS
+    assert temp.x.shape[-1] >= dynamic_vars
+    final_step = batch.y.shape[-1]
+    predicted_rollout = []
+
+    for time_step in range(final_step):
+        temp.x[:, -dynamic_vars:] = apply_boundary_condition(
+            temp.x[:, -dynamic_vars:], temp.BC[:, :, time_step],
+            temp.node_BC, type_BC=temp.type_BC
+        )
+        pred = model(temp)
+        predicted_rollout.append(pred)
+
+        if time_step < warmup_steps:
+            gt = batch.y[:, :, time_step]
+            temp.x = use_prediction(temp.x, gt, model.previous_t)
+        else:
+            temp.x = use_prediction(temp.x, pred, model.previous_t)
+
+    return torch.stack(predicted_rollout, -1)
+
+
 class LightningTrainer(L.LightningModule):
     def __init__(self, model, lr_info, trainer_options, temporal_test_dataset_parameters):
         '''
@@ -133,7 +171,9 @@ class LightningTrainer(L.LightningModule):
                                                                 type_BC=temp.type_BC)
             # Model prediction
             preds = self.model(temp)
-            temp.x = use_prediction(temp.x, preds, self.model.previous_t)
+            # clamp to physical bounds for state feedback; raw preds used for loss so gradients flow
+            # temp.x = use_prediction(temp.x, preds, self.model.previous_t)
+            temp.x = use_prediction(temp.x, torch.clamp(preds, min=0), self.model.previous_t)
 
             loss = loss_function(preds, temp.y[:,:,i], temp, temp.BC[:,-2:,i+1].mean(1), type_loss=self.type_loss, 
                            only_where_water=self.only_where_water, conservation=self.conservation, 
