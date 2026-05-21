@@ -35,7 +35,7 @@ selected_edge_features:
 
 # temporal training dataset
 temporal_dataset_parameters:
-  rollout_steps : 4
+  rollout_steps : 80
   previous_t    : 3
   time_start    : 0
   time_stop     : -1
