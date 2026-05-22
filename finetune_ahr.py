@@ -158,8 +158,12 @@ def main():
         save_last=True,
     )
     curriculum_callback = CurriculumLearning(max_rollout_steps, patience=5)
+    # early_stopping = EarlyStopping(
+    #     "val_loss", mode="min", patience=trainer_options["patience"], min_delta=1e-5
+    # )
     early_stopping = EarlyStopping(
-        "val_loss", mode="min", patience=trainer_options["patience"], min_delta=1e-5
+        "val_loss", mode="min", patience=trainer_options["patience"], min_delta=1e-5,
+        check_on_train_epoch_end=False
     )
 
     trainer = L.Trainer(
