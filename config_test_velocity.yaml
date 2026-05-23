@@ -1,6 +1,4 @@
-# Fine-tuning config — 100 m SFINCS run with additionalsrc_velocity dataset
-# Dataset: ahr_river_v03_marg_additionalsrc_velocity_100m_cutpolygon
-
+# Test config — evaluate best checkpoint on velocity dataset
 dataset_parameters:
   dataset_folder    : 'database/datasets'
   temporal_res      : 60
@@ -10,7 +8,6 @@ dataset_parameters:
   test_dataset_name : 'ahr_river_v03_marg_additionalsrc_velocity_100m_cutpolygon'
   seed              : 0
 
-# Scaler options: null, 'minmax', 'minmax_neg', or 'standard'
 scalers:
   DEM_scaler        : 'standard'
   slope_scaler      : null
@@ -20,27 +17,23 @@ scalers:
   WD_scaler         : null
   V_scaler          : null
 
-# node features
 selected_node_features:
   slopes        : False
   slope         : False
   area          : True
   DEM           : True
 
-# edge features
 selected_edge_features:
   edge_length           : True
   edge_relative_distance: False
   edge_slope            : False
 
-# temporal training dataset
 temporal_dataset_parameters:
   rollout_steps : 80
   previous_t    : 3
   time_start    : 0
   time_stop     : -1
 
-# Model — same architecture as previous fine-tuning run
 models:
   model_type              : 'MSGNN'
   hid_features            : 64
@@ -61,19 +54,17 @@ models:
 trainer_options:
   type_loss             : 'RMSE'
   only_where_water      : True
-  # batch_size            : 2
-  batch_size            : 1
+  batch_size            : 2
   conservation          : 0
   velocity_scaler       : 7
   curriculum_epoch      : 5
   patience              : 300
   max_epochs            : 1000
 
-# learning rate — lower for fine-tuning
 lr_info:
   learning_rate   : 0.001
   weight_decay    : 0
   gamma           : 0.7
   step_size       : 10
 
-saved_model: 'results/finetuned_dk15.h5'
+saved_model: 'lightning_logs/last_40step_run.ckpt'
