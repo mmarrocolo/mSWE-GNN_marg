@@ -171,7 +171,8 @@ def main():
         devices="auto",
         max_epochs=trainer_options["max_epochs"],
         gradient_clip_val=1,
-        precision="16-mixed" if device.type == "cuda" else "32",
+        # precision="16-mixed" if device.type == "cuda" else "32",  # FP16 can overflow without output clamping
+        precision="bf16-mixed" if device.type == "cuda" else "32",
         enable_progress_bar=True,
         logger=wandb_logger,
         callbacks=[checkpoint_callback, curriculum_callback, early_stopping],
