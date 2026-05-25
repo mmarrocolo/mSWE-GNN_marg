@@ -89,9 +89,11 @@ def rollout_test(model, batch):
                                                             temp.BC[:,:,time_step], 
                                                             temp.node_BC, type_BC=temp.type_BC)
         pred = model(temp)
-        temp.x = use_prediction(temp.x, pred, model.previous_t)
+        # clamp state feedback to prevent negative values spiralling to NaN over long rollouts
+        # temp.x = use_prediction(temp.x, pred, model.previous_t)
+        temp.x = use_prediction(temp.x, torch.clamp(pred, min=0), model.previous_t)
         predicted_rollout.append(pred)
-    
+
     return torch.stack(predicted_rollout, -1)
 
 
@@ -127,7 +129,9 @@ def rollout_test_warmstart(model, batch, warmup_steps=0):
             gt = batch.y[:, :, time_step]
             temp.x = use_prediction(temp.x, gt, model.previous_t)
         else:
-            temp.x = use_prediction(temp.x, pred, model.previous_t)
+            # clamp state feedback to prevent negative spiral over long rollouts
+            # temp.x = use_prediction(temp.x, pred, model.previous_t)
+            temp.x = use_prediction(temp.x, torch.clamp(pred, min=0), model.previous_t)
 
     return torch.stack(predicted_rollout, -1)
 
