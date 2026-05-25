@@ -16,7 +16,11 @@ def get_mean_error(diff_rollout, type_loss, nodes_dim=0):
     nodes_dim: int (default = 0)
         dimension where nodes are located
     '''
+    # guard against empty tensor (happens when only_where_water=True and no wet nodes)
+    if diff_rollout.numel() == 0:
+        return torch.zeros(1, device=diff_rollout.device).squeeze()
     if type_loss == 'RMSE':
+        # average_diff_t = torch.sqrt((diff_rollout**2).mean(nodes_dim))
         average_diff_t = torch.sqrt((diff_rollout**2).mean(nodes_dim))
     elif type_loss == 'MAE':
         average_diff_t = diff_rollout.abs().mean(nodes_dim)
