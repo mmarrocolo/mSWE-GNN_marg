@@ -17,8 +17,9 @@ def get_mean_error(diff_rollout, type_loss, nodes_dim=0):
         dimension where nodes are located
     '''
     # guard against empty tensor (happens when only_where_water=True and no wet nodes)
+    # sum preserves grad_fn (needed for backprop); zeros() would detach from graph
     if diff_rollout.numel() == 0:
-        return torch.zeros(diff_rollout.shape[1:], device=diff_rollout.device)
+        return diff_rollout.sum(dim=nodes_dim)
     if type_loss == 'RMSE':
         # average_diff_t = torch.sqrt((diff_rollout**2).mean(nodes_dim))
         average_diff_t = torch.sqrt((diff_rollout**2).mean(nodes_dim))
