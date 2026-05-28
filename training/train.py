@@ -175,13 +175,31 @@ class LightningTrainer(L.LightningModule):
                                                                 type_BC=temp.type_BC)
             # Model prediction
             preds = self.model(temp)
+
+            # NaN debugging: trace origin of NaN
+            if preds.isnan().any():
+                print(f"[NaN-DEBUG] NaN in preds at rollout step {i}: "
+                      f"nan_count={preds.isnan().sum().item()}/{preds.numel()}, "
+                      f"x_has_nan={temp.x.isnan().any().item()}, "
+                      f"edge_attr_has_nan={temp.edge_attr.isnan().any().item()}")
+            if temp.x.isnan().any():
+                print(f"[NaN-DEBUG] NaN in temp.x at rollout step {i} (before preds): "
+                      f"nan_count={temp.x.isnan().sum().item()}")
+
             # clamp to physical bounds for state feedback; raw preds used for loss so gradients flow
             # temp.x = use_prediction(temp.x, preds, self.model.previous_t)
             temp.x = use_prediction(temp.x, torch.clamp(preds, min=0), self.model.previous_t)
 
-            loss = loss_function(preds, temp.y[:,:,i], temp, temp.BC[:,-2:,i+1].mean(1), type_loss=self.type_loss, 
-                           only_where_water=self.only_where_water, conservation=self.conservation, 
+            loss = loss_function(preds, temp.y[:,:,i], temp, temp.BC[:,-2:,i+1].mean(1), type_loss=self.type_loss,
+                           only_where_water=self.only_where_water, conservation=self.conservation,
                            velocity_scaler=self.velocity_scaler)
+
+            if loss.isnan():
+                print(f"[NaN-DEBUG] NaN in loss at rollout step {i}: "
+                      f"preds_has_nan={preds.isnan().any().item()}, "
+                      f"real_has_nan={temp.y[:,:,i].isnan().any().item()}, "
+                      f"preds_range=[{preds.min().item():.4f}, {preds.max().item():.4f}]")
+
             roll_loss.append(loss)
 
         loss = torch.stack(roll_loss).mean()

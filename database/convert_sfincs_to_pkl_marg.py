@@ -94,17 +94,10 @@ def interpolate_time_series(source_points, grid_3d, target_points, label):
             method="linear",
         )
 
-        # Fill any outside-domain NaNs with nearest interpolation
-        nan_mask = ~np.isfinite(interp_linear)
-        if nan_mask.any():
-            interp_nearest = griddata(
-                source_points[valid],
-                values[valid],
-                target_points[nan_mask],
-                method="nearest",
-            )
-            interp_linear[nan_mask] = interp_nearest
-
+        # Mesh nodes outside the convex hull of wet source cells get NaN from
+        # linear griddata.  Set them to 0 (dry) instead of nearest-neighbour,
+        # which would otherwise flood every dry hillslope node with the value
+        # of the nearest wet river cell.
         interp_linear = np.nan_to_num(interp_linear, nan=0.0)
         out[:, t] = interp_linear.astype(np.float32)
 
@@ -260,9 +253,18 @@ def main():
     WD = interpolate_time_series(source_points, WD_grid, target_points, "WD")
 
     # Velocities are optional in this SFINCS output. Use zeros if missing.
+    # Open a second handle without xarray fill-value masking to avoid memory
+    # allocation errors when SFINCS velocity vars have integer fill values.
+    ds_raw = xr.open_dataset(args.sfincs_map, decode_times=False, mask_and_scale=False)
+
     if args.vx_var is not None and args.vx_var in ds.data_vars:
         print(f"Interpolating velocity X from '{args.vx_var}'...")
-        VX_grid = ds[args.vx_var].values
+        VX_raw = ds_raw[args.vx_var].values.astype(np.float32)
+        # Replace SFINCS fill values (typically large integers or -9999) with NaN
+        fill_val = ds_raw[args.vx_var].attrs.get("_FillValue", None)
+        if fill_val is not None:
+            VX_raw[VX_raw == fill_val] = np.nan
+        VX_grid = VX_raw
         VX = interpolate_time_series(source_points, VX_grid, target_points, "VX")
     else:
         VX = np.zeros_like(WD, dtype=np.float32)
@@ -270,11 +272,17 @@ def main():
 
     if args.vy_var is not None and args.vy_var in ds.data_vars:
         print(f"Interpolating velocity Y from '{args.vy_var}'...")
-        VY_grid = ds[args.vy_var].values
+        VY_raw = ds_raw[args.vy_var].values.astype(np.float32)
+        fill_val = ds_raw[args.vy_var].attrs.get("_FillValue", None)
+        if fill_val is not None:
+            VY_raw[VY_raw == fill_val] = np.nan
+        VY_grid = VY_raw
         VY = interpolate_time_series(source_points, VY_grid, target_points, "VY")
     else:
         VY = np.zeros_like(WD, dtype=np.float32)
         print("Velocity Y not provided; using zeros.")
+
+    ds_raw.close()
 
     # Source BCs (optional)
     src_xy = dis_times_s = discharge = None
