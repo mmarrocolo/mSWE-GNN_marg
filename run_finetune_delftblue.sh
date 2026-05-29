@@ -26,15 +26,16 @@ export PYTHONPATH=$SLURM_SUBMIT_DIR
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # --- build PKL dataset if not already present ---
-DATASET=database/datasets/train/ahr_river_v03_marg_additionalsrc_velocity_100m_cutpolygon.pkl
-SFINCS_DIR=database/raw_datasets_ahr/Simulations/ahr_river_v03_Marg_additionalsrc_velocity_100m_cutpolygon
+DATASET=database/datasets/train/ahr_river_v03_marg_additionalsrc_velocity_100m_cutpolygon_warmstart.pkl
+SFINCS_DIR=database/raw_datasets_ahr/Simulations/ahr_river_v03_Marg_additionalsrc_velocity_100m_cutpolygon_warmstart
 
 if [ ! -f "$DATASET" ]; then
     python database/convert_sfincs_to_pkl_marg.py \
         --sfincs-map   "$SFINCS_DIR/sfincs_map.nc" \
         --template-pkl database/datasets/train/template_100m.pkl \
-        --dataset-name ahr_river_v03_marg_additionalsrc_velocity_100m_cutpolygon \
+        --dataset-name ahr_river_v03_marg_additionalsrc_velocity_100m_cutpolygon_warmstart \
         --out-root     database/datasets \
+        --vx-var u --vy-var v \
         --src-file     "$SFINCS_DIR/sfincs.src" \
         --dis-file     "$SFINCS_DIR/sfincs.dis" \
         2>&1 | tee logs/${SLURM_JOB_ID}_dataset.log
