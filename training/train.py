@@ -89,9 +89,7 @@ def rollout_test(model, batch):
                                                             temp.BC[:,:,time_step], 
                                                             temp.node_BC, type_BC=temp.type_BC)
         pred = model(temp)
-        # clamp state feedback to prevent negative values spiralling to NaN over long rollouts
-        # temp.x = use_prediction(temp.x, pred, model.previous_t)
-        temp.x = use_prediction(temp.x, torch.clamp(pred, min=0), model.previous_t)
+        temp.x = use_prediction(temp.x, pred, model.previous_t)
         predicted_rollout.append(pred)
 
     return torch.stack(predicted_rollout, -1)
@@ -129,9 +127,7 @@ def rollout_test_warmstart(model, batch, warmup_steps=0):
             gt = batch.y[:, :, time_step]
             temp.x = use_prediction(temp.x, gt, model.previous_t)
         else:
-            # clamp state feedback to prevent negative spiral over long rollouts
-            # temp.x = use_prediction(temp.x, pred, model.previous_t)
-            temp.x = use_prediction(temp.x, torch.clamp(pred, min=0), model.previous_t)
+            temp.x = use_prediction(temp.x, pred, model.previous_t)
 
     return torch.stack(predicted_rollout, -1)
 
@@ -186,9 +182,7 @@ class LightningTrainer(L.LightningModule):
                 print(f"[NaN-DEBUG] NaN in temp.x at rollout step {i} (before preds): "
                       f"nan_count={temp.x.isnan().sum().item()}")
 
-            # clamp to physical bounds for state feedback; raw preds used for loss so gradients flow
-            # temp.x = use_prediction(temp.x, preds, self.model.previous_t)
-            temp.x = use_prediction(temp.x, torch.clamp(preds, min=0), self.model.previous_t)
+            temp.x = use_prediction(temp.x, preds, self.model.previous_t)
 
             loss = loss_function(preds, temp.y[:,:,i], temp, temp.BC[:,-2:,i+1].mean(1), type_loss=self.type_loss,
                            only_where_water=self.only_where_water, conservation=self.conservation,

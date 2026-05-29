@@ -144,8 +144,7 @@ class GNN(BaseFloodModel):
         x = x + self._add_residual_connection(x0)
         
         # ReLU because of negative water depth or discharge
-        # x = torch.relu(x)  # disabled: kills dry-start gradients during training
-        x = torch.nn.functional.leaky_relu(x, negative_slope=0.01)  # gradient flows for negatives; prevents FP16 blow-up
+        x = torch.relu(x)
 
         # Mask very small water depth
         # x = self._mask_small_WD(x, epsilon=0.0001)  # disabled: kills small BC-forced values
@@ -343,8 +342,7 @@ class MSGNN(BaseFloodModel):
         x = x + self._add_residual_connection(x0)
         
         # ReLU because of negative water depth or discharge
-        # x = torch.relu(x)  # disabled: kills dry-start gradients during training
-        x = torch.nn.functional.leaky_relu(x, negative_slope=0.01)  # gradient flows for negatives; prevents FP16 blow-up
+        x = torch.relu(x)
 
         # Mask very small water depth
         # x = self._mask_small_WD(x, epsilon=0.0001)  # disabled: kills small BC-forced values
