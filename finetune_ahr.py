@@ -57,7 +57,8 @@ def main():
 
     rollout_steps = cfg['temporal_dataset_parameters']['rollout_steps']
     hid_features  = cfg['models']['hid_features']
-    run_name = f"rollout{rollout_steps}_hid{hid_features}"
+    partition = os.environ.get('SLURM_JOB_PARTITION', '').removeprefix('gpu-')
+    run_name = f"rollout{rollout_steps}_hid{hid_features}" + (f"_{partition}" if partition else "")
 
     wandb.init(project="mswe-gnn-ahr", name=run_name, config=cfg)
     wandb_logger = WandbLogger(project="mswe-gnn-ahr", name=run_name, log_model=True, config=cfg)
