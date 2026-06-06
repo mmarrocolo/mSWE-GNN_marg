@@ -64,8 +64,8 @@ trainer_options:
   type_loss             : 'RMSE'
   only_where_water      : True
   # batch_size            : 2
-  batch_size            : 1
-  conservation          : 0
+  batch_size            : 4
+  conservation          : 0.01
   velocity_scaler       : 7
   curriculum_epoch      : 5
   patience              : 300

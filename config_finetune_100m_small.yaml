@@ -35,7 +35,7 @@ selected_edge_features:
 
 # temporal training dataset
 temporal_dataset_parameters:
-  rollout_steps : 40
+  rollout_steps : 4
   previous_t    : 3
   time_start    : 0
   time_stop     : -1
@@ -43,8 +43,8 @@ temporal_dataset_parameters:
 # Model — reduced size for initial test
 models:
   model_type              : 'MSGNN'
-  hid_features            : 64   # reduced from 64
-  mlp_layers              : 3    # reduced from 3
+  hid_features            : 64   
+  mlp_layers              : 3    
   seed                    : 666
   learned_residuals       : True
   mlp_activation          : 'prelu'
@@ -61,8 +61,8 @@ models:
 trainer_options:
   type_loss             : 'RMSE'
   only_where_water      : True
-  batch_size            : 2     # reduced for longer rollouts
-  conservation          : 0
+  batch_size            : 4     # reduced for longer rollouts
+  conservation          : 0.01
   velocity_scaler       : 7
   curriculum_epoch      : 5      # reach rollout_steps=12 by epoch 55 (was 30→only reached 7/12)
   patience              : 300
