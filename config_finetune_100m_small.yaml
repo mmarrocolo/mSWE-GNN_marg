@@ -66,7 +66,7 @@ trainer_options:
   velocity_scaler       : 7
   curriculum_epoch      : 5      # reach rollout_steps=12 by epoch 55 (was 30→only reached 7/12)
   patience              : 300
-  max_epochs            : 500
+  max_epochs            : 2000
 
 # learning rate — lower for fine-tuning
 lr_info:
