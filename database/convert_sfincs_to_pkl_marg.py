@@ -184,8 +184,7 @@ def build_output_data(template_data, WD, VX, VY,
         data.node_BC = torch.tensor(node_bc_indices, dtype=torch.int32)
         data.BC = torch.FloatTensor(bc_tensor)
         data.type_BC = torch.tensor(2, dtype=torch.int32)  # discharge type
-        # Scalar 1.0 broadcasts correctly over BC [n_bc, T, 2] in dataset.py
-        data.edge_BC_length = torch.ones(1, dtype=torch.float32)
+        data.edge_BC_length = torch.ones(n_bc, dtype=torch.float32)
     else:
         # Fallback: preserve template BC structure, just resize time dimension
         if hasattr(data, "node_BC"):

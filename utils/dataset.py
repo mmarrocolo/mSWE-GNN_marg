@@ -585,10 +585,15 @@ def get_inflow_volume(data, BC):
     For example, if your BC spans 40 time steps, you hould sum it before passing it to this function.    
     '''
     sec_in_min = 60 #seconds in a minute
-    inflow_nodes = BC * data.edge_BC_length  # [m^2/s * m = m^3/s]
+    el = data.edge_BC_length
+    # When batched, edge_BC_length shape is (batch_size,) but BC shape is
+    # (n_bc * batch_size,). Repeat el so shapes align.
+    if el.shape[0] != BC.shape[0] and BC.shape[0] % el.shape[0] == 0:
+        el = el.repeat(BC.shape[0] // el.shape[0])
+    inflow_nodes = BC * el  # [m^2/s * m = m^3/s]
 
     inflow_volume = inflow_nodes.sum() * (sec_in_min * data.temporal_res) #[m^3]
-    return inflow_volume 
+    return inflow_volume
 
 def get_breach_coordinates(WD, pos):
     '''Returns the coordinates of the breach identified from where the water depth is non-zero at time 0'''
