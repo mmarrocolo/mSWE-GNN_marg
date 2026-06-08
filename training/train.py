@@ -210,30 +210,31 @@ class LightningTrainer(L.LightningModule):
                                                gamma=self.lr_info['gamma'])
         return [optimizer], [lr_scheduler]
         
-    def validation_step(self, batch, batch_idx):     
+    def validation_step(self, batch, batch_idx):
         predicted_rollout = rollout_test(self.model, batch)
         real_rollout = batch.y
 
-        # Masking the output to only consider finest scale
+        # Masking the output to only consider finest scale (last scale = SFINCS)
         if 'node_ptr' in batch.keys():
             temp = adapt_batch_training(batch)
-            mask = self.model._create_scale_mask(temp) == 0
+            mask = self.model._create_scale_mask(temp) == (self.model.num_scales - 1)
             predicted_rollout = predicted_rollout[mask]
             real_rollout = real_rollout[mask]
-        
+
         assert real_rollout.shape == predicted_rollout.shape, "Real and predicted rollout must have the same dimensions\n"\
                                                 f"Intead there is {real_rollout.shape} == {predicted_rollout.shape}"
 
-        val_loss = get_rollout_loss(predicted_rollout, real_rollout, type_loss=self.type_loss, 
+        val_loss = get_rollout_loss(predicted_rollout, real_rollout, type_loss=self.type_loss,
                                 only_where_water=self.only_where_water).mean()
 
         # CSI validation
         CSI_005 = get_CSI(predicted_rollout, real_rollout, water_threshold=0.05).nanmean()
         CSI_03 = get_CSI(predicted_rollout, real_rollout, water_threshold=0.3).nanmean()
-        
+
         self.log("val_loss", val_loss, prog_bar=True)
         self.log("val_CSI_005", CSI_005, prog_bar=True)
         self.log("val_CSI_03", CSI_03, prog_bar=False)
+        self.log("val_loss_CSI", val_loss*(1-CSI_005), prog_bar=False)
 
     def predict_step(self, batch, batch_idx):     
         predicted_rollout = rollout_test(self.model, batch)

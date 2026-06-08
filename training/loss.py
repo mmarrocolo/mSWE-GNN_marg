@@ -52,7 +52,7 @@ def get_loss_variable_scaler(velocity_scaler=1):
     return loss_scaler
 
 def get_multiscale_loss(diff, data, only_where_water=True, type_loss='RMSE', nodes_dim=0):
-    '''Calculates multiscale loss by weighting loss in different scales
+    '''Calculates loss averaged equally across all scales
 
     Parameters:
     diff: torch.tensor
@@ -65,18 +65,25 @@ def get_multiscale_loss(diff, data, only_where_water=True, type_loss='RMSE', nod
         dimension where nodes are located
     '''
     node_ptr = data.node_ptr
+    num_scales = node_ptr.shape[-1] - 1
+
     if only_where_water:
         where_water = mask_on_water(diff)
     else:
         where_water = torch.ones(diff.shape[0]).bool()
-    
+
     if isinstance(data, Batch):
-        multiscale_loss = get_mean_error(torch.cat([diff[data.node_ptr[i,0]:data.node_ptr[i,1]][where_water[node_ptr[i,0]:node_ptr[i,1]]] 
-                                                    for i in range(data.num_graphs)]), type_loss, nodes_dim)
+        per_scale_loss = torch.stack([
+            get_mean_error(torch.cat([
+                diff[data.node_ptr[i,s]:data.node_ptr[i,s+1]][where_water[node_ptr[i,s]:node_ptr[i,s+1]]]
+                for i in range(data.num_graphs)]), type_loss, nodes_dim)
+            for s in range(num_scales)])
     else:
-        multiscale_loss = get_mean_error(diff[node_ptr[0]:node_ptr[1]][where_water[node_ptr[0]:node_ptr[1]]], type_loss, nodes_dim)
-        
-    return multiscale_loss
+        per_scale_loss = torch.stack([
+            get_mean_error(diff[node_ptr[s]:node_ptr[s+1]][where_water[node_ptr[s]:node_ptr[s+1]]], type_loss, nodes_dim)
+            for s in range(num_scales)])
+
+    return per_scale_loss.mean(0)
 
 def loss_function(preds, real, data, BC, type_loss='RMSE', only_where_water=False, 
                   conservation=0, velocity_scaler=1):
