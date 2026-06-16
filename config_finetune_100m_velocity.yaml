@@ -4,10 +4,10 @@
 dataset_parameters:
   dataset_folder    : 'database/datasets'
   temporal_res      : 60
-  train_dataset_name: 'ahr_river_v03_marg_additionalsrc_velocity_100m_cutpolygon_warmstart'
+  train_dataset_name: 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart'
   train_size        : 1
   val_prcnt         : 0
-  test_dataset_name : 'ahr_river_v03_marg_additionalsrc_velocity_100m_cutpolygon_warmstart'
+  test_dataset_name : 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart'
   seed              : 0
 
 # Scaler options: null, 'minmax', 'minmax_neg', or 'standard'
@@ -37,7 +37,7 @@ selected_edge_features:
 temporal_dataset_parameters:
   # rollout_steps : 80
   # rollout_steps : 4
-  rollout_steps : 40
+  rollout_steps : 20
   previous_t    : 3
   time_start    : 0
   time_stop     : -1

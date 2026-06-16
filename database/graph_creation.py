@@ -2153,43 +2153,51 @@ def create_mesh_dataset(dataset_folder, n_sim, start_sim=1,
     return mesh_dataset
 
 def invert_scale_ordering(data):
-    """Invert the ordering of the node and edge features in the multiscale mesh (from coarse to fine or viceversa).
-    Use this function on the pyg_dataset obtained in create_datasets"""
+    """Reorder multiscale mesh scales from finest to coarsest (sorted by face count descending).
+    Use this function on the pyg_dataset obtained in create_datasets."""
 
     assert isinstance(data.mesh, MultiscaleMesh), "This function is valid only for MultiscaleMesh datasets."
-    
-    temp = Data()
 
+    n = data.mesh.num_meshes
     node_ptr = data.node_ptr
-    edge_ptr = data.edge_ptr
-    intra_edge_ptr = data.intra_edge_ptr
 
-    temp.node_ptr = torch.LongTensor(np.cumsum([0]+[node_ptr[-i-1]-node_ptr[-i-2] for i in range(len(node_ptr)-1)]))
-    temp.edge_ptr = torch.LongTensor(np.cumsum([0]+[edge_ptr[-i-1]-edge_ptr[-i-2] for i in range(len(edge_ptr)-1)]))
-    temp.intra_edge_ptr = torch.LongTensor(np.cumsum([0]+[intra_edge_ptr[-i-1]-intra_edge_ptr[-i-2] for i in range(len(intra_edge_ptr)-1)]))
+    # Sort scales finest-first (descending face count)
+    perm = sorted(range(n), key=lambda i: -data.mesh.meshes[i].num_faces)
 
-    temp.WD = torch.cat([data.WD[node_ptr[i]:node_ptr[i+1]] for i in range(len(node_ptr)-1)][::-1])
-    temp.VX = torch.cat([data.VX[node_ptr[i]:node_ptr[i+1]] for i in range(len(node_ptr)-1)][::-1])
-    temp.VY = torch.cat([data.VY[node_ptr[i]:node_ptr[i+1]] for i in range(len(node_ptr)-1)][::-1])
-    temp.slopex = torch.cat([data.slopex[node_ptr[i]:node_ptr[i+1]] for i in range(len(node_ptr)-1)][::-1])
-    temp.slopey = torch.cat([data.slopey[node_ptr[i]:node_ptr[i+1]] for i in range(len(node_ptr)-1)][::-1])
-    temp.DEM = torch.cat([data.DEM[node_ptr[i]:node_ptr[i+1]] for i in range(len(node_ptr)-1)][::-1])
-    temp.area = torch.cat([data.area[node_ptr[i]:node_ptr[i+1]] for i in range(len(node_ptr)-1)][::-1])
-
-    temp.BC = torch.flip(data.BC, [0])
-    temp.node_BC = torch.stack([data.node_BC[i]-node_ptr[i+1]+temp.node_ptr[-i-1] for i in range(len(data.node_BC))])
-    temp.type_BC = data.type_BC
-
-    temp.edge_index = torch.cat([data.edge_index[:,edge_ptr[i]:edge_ptr[i+1]]-node_ptr[i]+temp.node_ptr[-i-2] for i in range(len(edge_ptr)-1)][::-1], 1)
-    temp.face_distance = torch.cat([data.face_distance[edge_ptr[i]:edge_ptr[i+1]] for i in range(len(edge_ptr)-1)][::-1])
-    temp.face_relative_distance = torch.cat([data.face_relative_distance[edge_ptr[i]:edge_ptr[i+1]] for i in range(len(edge_ptr)-1)][::-1])
-    temp.edge_BC_length = torch.flip(data.edge_BC_length, [0])
-
-    meshes = data.mesh.meshes[::-1]
+    # Rebuild mesh in sorted order — recomputes all edge indices, pointers, and derived attributes
+    sorted_meshes = [data.mesh.meshes[perm[i]] for i in range(n)]
     mesh = MultiscaleMesh()
-    mesh.stack_meshes(meshes)
+    mesh.stack_meshes(sorted_meshes)
+
+    temp = Data()
     temp.mesh = mesh
+    temp.node_ptr = torch.LongTensor(mesh.face_ptr)
+    temp.edge_ptr = torch.LongTensor(mesh.dual_edge_ptr)
+    temp.intra_edge_ptr = torch.LongTensor(mesh.intra_edge_ptr)
     temp.intra_mesh_edge_index = torch.LongTensor(mesh.intra_mesh_dual_edge_index)
+    temp.edge_index = torch.LongTensor(mesh.dual_edge_index)
+    temp.face_distance = torch.FloatTensor(mesh.dual_edge_length)
+    temp.face_relative_distance = torch.FloatTensor(mesh.face_relative_distance)
+    temp.num_nodes = data.num_nodes
+
+    # Reorder node features according to the new scale permutation
+    def reorder_node(feat):
+        return torch.cat([feat[node_ptr[perm[i]]:node_ptr[perm[i]+1]] for i in range(n)])
+
+    temp.WD  = reorder_node(data.WD)
+    temp.VX  = reorder_node(data.VX)
+    temp.VY  = reorder_node(data.VY)
+    temp.DEM = reorder_node(data.DEM)
+    temp.area = reorder_node(data.area)
+
+    # Recompute edge_slope from reordered DEM and new edge_index
+    temp.edge_slope = (temp.DEM[temp.edge_index[0]] - temp.DEM[temp.edge_index[1]]) / temp.face_distance
+
+    # BC-related — overwritten by SFINCS workflow after loading template, copied as-is
+    temp.BC = data.BC
+    temp.node_BC = data.node_BC
+    temp.edge_BC_length = data.edge_BC_length
+    temp.type_BC = data.type_BC
 
     return temp
 

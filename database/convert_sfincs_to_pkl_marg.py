@@ -153,12 +153,17 @@ def build_output_data(template_data, WD, VX, VY,
 
     if src_xy is not None and dis_times_s is not None and discharge is not None and map_times_s is not None:
         # Find nearest BOUNDARY face of the finest mesh level for each source point.
-        # face_bnd lists faces adjacent to at least one inactive cell (domain perimeter).
-        # This keeps BCs at the domain border, consistent with how the model was trained.
-        finest_mesh = data.mesh.meshes[-1] if hasattr(data.mesh, 'meshes') else data.mesh
+        # Use the mesh with the most faces as finest (robust to both coarse→fine and
+        # fine→coarse orderings after invert_scale_ordering).
+        if hasattr(data.mesh, 'meshes'):
+            finest_idx = max(range(len(data.mesh.meshes)),
+                             key=lambda i: data.mesh.meshes[i].num_faces)
+            finest_mesh = data.mesh.meshes[finest_idx]
+            finest_offset = int(data.node_ptr[finest_idx]) if hasattr(data, 'node_ptr') else 0
+        else:
+            finest_mesh = data.mesh
+            finest_offset = 0
         if hasattr(finest_mesh, 'face_bnd') and len(finest_mesh.face_bnd) > 0:
-            # Offset of finest-mesh faces in the global multiscale face array
-            finest_offset = int(data.node_ptr[-2]) if hasattr(data, 'node_ptr') else 0
             local_bnd_ids  = np.asarray(finest_mesh.face_bnd)
             global_bnd_ids = local_bnd_ids + finest_offset
             bnd_face_xy    = np.asarray(finest_mesh.face_xy)[local_bnd_ids]

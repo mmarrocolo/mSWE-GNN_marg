@@ -214,10 +214,10 @@ class LightningTrainer(L.LightningModule):
         predicted_rollout = rollout_test(self.model, batch)
         real_rollout = batch.y
 
-        # Masking the output to only consider finest scale (last scale = SFINCS)
+        # Masking the output to only consider finest scale (first scale = SFINCS, index 0)
         if 'node_ptr' in batch.keys():
             temp = adapt_batch_training(batch)
-            mask = self.model._create_scale_mask(temp) == (self.model.num_scales - 1)
+            mask = self.model._create_scale_mask(temp) == 0
             predicted_rollout = predicted_rollout[mask]
             real_rollout = real_rollout[mask]
 
