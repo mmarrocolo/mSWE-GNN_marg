@@ -55,15 +55,17 @@ def main():
 
     cfg = read_config(args.config)
 
-    rollout_steps = cfg['temporal_dataset_parameters']['rollout_steps']
-    hid_features  = cfg['models']['hid_features']
     partition = os.environ.get('SLURM_JOB_PARTITION', '').removeprefix('gpu-')
-    run_name = f"rollout{rollout_steps}_hid{hid_features}" + (f"_{partition}" if partition else "")
-
-    wandb.init(project="mswe-gnn-ahr", name=run_name, config=cfg)
-    wandb_logger = WandbLogger(project="mswe-gnn-ahr", name=run_name, log_model=True, config=cfg)
+    # run_name is deferred until after sweep overrides are applied so it reflects actual params
+    wandb.init(project="mswe-gnn-ahr-sweep", config=cfg)
     fix_dict_in_config(wandb)
     config = wandb.config
+
+    rollout_steps = config['temporal_dataset_parameters']['rollout_steps']
+    hid_features  = config['models']['hid_features']
+    run_name = f"rollout{rollout_steps}_hid{hid_features}" + (f"_{partition}" if partition else "")
+    wandb.run.name = run_name
+    wandb_logger = WandbLogger(project="mswe-gnn-ahr-sweep", name=run_name, log_model=True)
 
     if args.epochs is not None:
         config.trainer_options["max_epochs"] = args.epochs

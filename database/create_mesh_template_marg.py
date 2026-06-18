@@ -316,13 +316,14 @@ def create_mesh_template_pkl(
             edge_BC_mid = finest_mesh.node_xy[finest_mesh.edge_index_BC].mean(1)
             mesh_list = interpolate_BC_location_multiscale(mesh_list, edge_BC_mid)
         mesh_list = [add_ghost_cells_mesh(m) for m in mesh_list]
+        mesh_list = mesh_list[::-1]  # ADDED TO FLIP THE ORDER so that the finest is first (sfincs at index 0, coarsest at -1)
 
         multiscale_mesh = MultiscaleMesh()
         multiscale_mesh.stack_meshes(mesh_list)
         mesh = multiscale_mesh
 
         # Create dummy attributes at finest scale and pool to all scales.
-        finest_mesh_with_ghost = mesh_list[-1]
+        finest_mesh_with_ghost = mesh_list[0]
         n_faces_fine = finest_mesh_with_ghost.face_x.shape[0]
         WD_fine = np.zeros((n_faces_fine, n_timesteps), dtype=np.float32)
         VX_fine = np.zeros((n_faces_fine, n_timesteps), dtype=np.float32)
@@ -530,12 +531,13 @@ def create_mesh_template_from_pol(polygon_path, xyz_path, output_pkl_path,
             edge_BC_mid = all_bc_mids[best:best+1]
             mesh_list = interpolate_BC_location_multiscale(mesh_list, edge_BC_mid)
         mesh_list = [add_ghost_cells_mesh(m) for m in mesh_list]
+        mesh_list = mesh_list[::-1]  # finest first (sfincs at index 0, coarsest at -1)
 
         multiscale_mesh = MultiscaleMesh()
         multiscale_mesh.stack_meshes(mesh_list)
         mesh = multiscale_mesh
 
-        finest_mesh_with_ghost = mesh_list[-1]
+        finest_mesh_with_ghost = mesh_list[0]
         n_faces_fine = finest_mesh_with_ghost.face_x.shape[0]
         WD_fine = np.zeros((n_faces_fine, n_timesteps), dtype=np.float32)
         VX_fine = np.zeros((n_faces_fine, n_timesteps), dtype=np.float32)

@@ -379,6 +379,21 @@ def add_dry_bed_condition(variable, previous_t):
     else:
         raise ValueError("Something wrong with the dimensions when adding dry bed conditions")
 
+def replicate_initial_condition(variable, previous_t):
+    """Prepend previous_t-1 copies of the first time step to a 2D variable.
+
+    Args:
+        variable (torch.Tensor): tensor of shape (num_nodes, T)
+        previous_t (int): number of initial time steps (one is already present)
+
+    Returns:
+        torch.Tensor: tensor with previous_t-1 copies of the first column prepended
+    """
+    if variable.dim() == 2:
+        return torch.cat((variable[:,:1].repeat(1, previous_t-1), variable), 1)
+    else:
+        raise ValueError("Something wrong with the dimensions when adding initial conditions")
+
 def get_temporal_samples_size(maximum_time, time_start=0, time_stop=-1, rollout_steps=1):
     '''Returns the number of samples generated when creating the temporal dataset
 
@@ -426,9 +441,9 @@ def to_temporal(data, previous_t=2, time_start=0, time_stop=-1, rollout_steps=1)
     temporal_samples_size = get_temporal_samples_size(maximum_time, time_start, time_stop, rollout_steps)
     rollout_steps = (rollout_steps%(time_stop%maximum_time-time_start+1)) if rollout_steps < 0 else rollout_steps
 
-    WD = add_dry_bed_condition(data.WD, previous_t)
-    BC = torch.cat((add_dry_bed_condition(data.BC, previous_t), data.BC[:,-1:]), 1) # Also add the last BC because of mass conservation
-    V = add_dry_bed_condition(data.V, previous_t)
+    WD = replicate_initial_condition(data.WD, previous_t)
+    BC = torch.cat((replicate_initial_condition(data.BC, previous_t), data.BC[:,-1:]), 1) # Also add the last BC because of mass conservation
+    V = replicate_initial_condition(data.V, previous_t)
 
     for init_time in range(time_start, time_start+temporal_samples_size):
         temp = Data()

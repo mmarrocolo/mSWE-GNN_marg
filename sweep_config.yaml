@@ -1,0 +1,63 @@
+# W&B sweep config for mSWE-GNN hyperparameter search on Ahr 100m dataset.
+# Run on your LOCAL machine to initialise:
+#   wandb sweep sweep_config.yaml
+# Then submit jobs on hal8 using run_sweep_hal8.sh.
+#
+# Dotted keys are reconstructed into nested dicts by fix_dict_in_config() in finetune_ahr.py.
+
+project: mswe-gnn-ahr-sweep
+program: finetune_ahr.py
+command:
+  - ${env}
+  - python
+  - ${program}
+  - --config
+  - config_finetune_100m_velocity.yaml
+  # no ${args}: sweep values are injected via wandb.config, not CLI flags
+
+method: bayes
+metric:
+  name: val_loss
+  goal: minimize
+
+early_terminate:
+  type: hyperband
+  min_iter: 30       # don't kill runs before epoch 30
+
+parameters:
+  # --- architecture ---
+  # 96 is the upper limit before memory gets tight with large batch/rollout combos
+  models.hid_features:
+    values: [32, 48, 64, 80]
+
+  # K preset vectors for 7-layer U-net (fine scales fixed at 1, coarser scales vary)
+  # low = lighter,  medium = current,  high = more expressive coarse filters
+  models.K:
+    values:
+      - [1, 1, 1, 3, 3, 2, 1]
+      - [1, 1, 1, 5, 4, 3, 2]
+      - [1, 2, 2, 7, 5, 4, 3]
+
+  # --- training dynamics ---
+  temporal_dataset_parameters.rollout_steps:
+    values: [2, 3, 4, 5]
+
+  trainer_options.batch_size:
+    values: [2, 4, 6]
+
+  lr_info.learning_rate:
+    distribution: log_uniform_values
+    min: 0.0005
+    max: 0.003
+
+  # --- fixed values (pinned here so they appear in every run's W&B config) ---
+  temporal_dataset_parameters.previous_t:
+    value: 3
+  trainer_options.max_epochs:
+    value: 500
+  trainer_options.patience:
+    value: 100          # reduced from 300 so bad runs don't drag on
+  trainer_options.conservation:
+    value: 0
+  trainer_options.curriculum_epoch:
+    value: 15
