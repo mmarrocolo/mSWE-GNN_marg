@@ -30,13 +30,10 @@ parameters:
   models.hid_features:
     values: [32, 48, 64, 80]
 
-  # K preset vectors for 7-layer U-net (fine scales fixed at 1, coarser scales vary)
-  # low = lighter,  medium = current,  high = more expressive coarse filters
+  # K as a single integer: model expands to [K]*num_scales for the encoder path.
+  # Using int avoids W&B list serialisation issues with fix_dict_in_config.
   models.K:
-    values:
-      - [1, 1, 1, 3, 3, 2, 1]
-      - [1, 1, 1, 5, 4, 3, 2]
-      - [1, 2, 2, 7, 5, 4, 3]
+    values: [1, 3, 5]
 
   # --- training dynamics ---
   temporal_dataset_parameters.rollout_steps:
