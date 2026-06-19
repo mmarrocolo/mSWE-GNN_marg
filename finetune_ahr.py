@@ -209,15 +209,6 @@ def main():
     test_size = len(test_dataset)
     maximum_time = test_dataset[0].WD.shape[1]
 
-    numerical_times = get_numerical_times(
-        test_dataset_name + "_test",
-        test_size,
-        temporal_res,
-        maximum_time,
-        **temporal_test_dataset_parameters,
-        overview_file="database/overview.csv",
-    )
-
     temporal_test_dataset = to_temporal_dataset(
         test_dataset, rollout_steps=-1, **temporal_test_dataset_parameters
     )
@@ -240,19 +231,32 @@ def main():
 
     print('test roll loss WD:', rollout_loss.mean(0)[0].item())
     print('test roll loss V:', rollout_loss.mean(0)[1:].mean().item())
-
-    avg_speedup, std_speedup = get_speed_up(numerical_times, model_times)
-
     print(f'test CSI_005: {spatial_analyser._get_CSI(water_threshold=0.05).nanmean().item()}')
     print(f'test CSI_03: {spatial_analyser._get_CSI(water_threshold=0.3).nanmean().item()}')
 
-    wandb.log({
-        "speed-up": avg_speedup,
+    log_dict = {
         "test roll loss WD": rollout_loss.mean(0)[0].item(),
         "test roll loss V": rollout_loss.mean(0)[1:].mean().item(),
         "test CSI_005": spatial_analyser._get_CSI(water_threshold=0.05).nanmean().item(),
         "test CSI_03": spatial_analyser._get_CSI(water_threshold=0.3).nanmean().item(),
-    })
+    }
+
+    try:
+        numerical_times = get_numerical_times(
+            test_dataset_name + "_test",
+            test_size,
+            temporal_res,
+            maximum_time,
+            **temporal_test_dataset_parameters,
+            overview_file="database/overview.csv",
+        )
+        avg_speedup, _ = get_speed_up(numerical_times, model_times)
+        log_dict["speed-up"] = avg_speedup
+        print(f"speed-up: {avg_speedup:.1f}x")
+    except (ValueError, FileNotFoundError) as e:
+        print(f"Speed-up not computed: {e}")
+
+    wandb.log(log_dict)
 
     os.makedirs("results", exist_ok=True)
     fig, _ = spatial_analyser.plot_CSI_rollouts(water_thresholds=[0.05, 0.3])

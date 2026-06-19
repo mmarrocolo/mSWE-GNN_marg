@@ -23,6 +23,8 @@ metric:
 early_terminate:
   type: hyperband
   min_iter: 30       # don't kill runs before epoch 30
+  # max_iter: 500      # matches trainer_options.max_epochs !!!
+  # s: 2               # halving every time (factor of 2) !!!
 
 parameters:
   # --- architecture ---
@@ -38,6 +40,10 @@ parameters:
   # --- training dynamics ---
   temporal_dataset_parameters.rollout_steps:
     values: [2, 3, 4, 5]
+  
+    # distribution: int_uniform
+    # min: 2
+    # max: 5
 
   trainer_options.batch_size:
     values: [2, 4, 6]
