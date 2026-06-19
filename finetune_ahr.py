@@ -108,6 +108,10 @@ def main():
     max_rollout_steps = temporal_dataset_parameters["rollout_steps"]
 
     model_parameters = dict(config.models)
+
+    if 'K' in dict(wandb.config):        # top-level sweep override
+        model_parameters['K'] = wandb.config['K']
+
     model_type = model_parameters.pop("model_type")
 
     if model_type == "MSGNN":
