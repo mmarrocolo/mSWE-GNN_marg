@@ -132,11 +132,15 @@ def main():
         "temporal_test_dataset_parameters": temporal_test_dataset_parameters,
     }
 
-    if "saved_model" in config and os.path.exists(config["saved_model"]):
+    if "saved_model" in config and config["saved_model"] and os.path.exists(config["saved_model"]):
         print(f"Loading pre-trained weights from: {config['saved_model']}")
-        plmodule = LightningTrainer.load_from_checkpoint(
-            config["saved_model"], map_location=device, **plmodule_kwargs
-        )
+        try:
+            plmodule = LightningTrainer.load_from_checkpoint(
+                config["saved_model"], map_location=device, **plmodule_kwargs
+            )
+        except RuntimeError as e:
+            print(f"Architecture mismatch with checkpoint — training from scratch. ({e.__class__.__name__})")
+            plmodule = LightningTrainer(**plmodule_kwargs)
     else:
         print("No saved_model found — training from scratch.")
         plmodule = LightningTrainer(**plmodule_kwargs)
