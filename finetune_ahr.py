@@ -109,8 +109,14 @@ def main():
 
     model_parameters = dict(config.models)
 
-    if 'K' in dict(wandb.config):        # top-level sweep override
-        model_parameters['K'] = wandb.config['K']
+    print(f"[DEBUG] wandb.config keys: {list(dict(wandb.config).keys())}")
+    print(f"[DEBUG] model_parameters['K'] before override: {model_parameters.get('K')}, type={type(model_parameters.get('K'))}")
+    if 'K' in dict(wandb.config):
+        k_val = wandb.config['K']
+        print(f"[DEBUG] wandb.config['K']={k_val}, type={type(k_val)}")
+        model_parameters['K'] = [int(x) for x in k_val] if not isinstance(k_val, int) else k_val
+    else:
+        print("[DEBUG] 'K' NOT found in dict(wandb.config)")
 
     model_type = model_parameters.pop("model_type")
 
