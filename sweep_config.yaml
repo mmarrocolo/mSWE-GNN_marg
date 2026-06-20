@@ -59,6 +59,7 @@ parameters:
     max: 0.003
 
   # --- fixed values (pinned here so they appear in every run's W&B config) ---
+  saved_model: ''         # always train from scratch in the sweep
   temporal_dataset_parameters.previous_t:
     value: 3
   trainer_options.max_epochs:
@@ -69,4 +70,3 @@ parameters:
     value: 0
   trainer_options.curriculum_epoch:
     value: 15
-    # 30 

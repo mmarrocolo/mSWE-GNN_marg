@@ -195,8 +195,9 @@ class MSGNN(BaseFloodModel):
         self.static_node_features = num_node_features - self.dynamic_node_features + self.with_WL
         self.learned_pooling = learned_pooling
         self.skip_connections = skip_connections
-        self.K = [K]*num_scales if isinstance(K, int) else K
-        self.K = self.K + self.K[::-1][1:] # add reverse K_hops for the coarse to fine
+        self.K = [K]*num_scales if isinstance(K, int) else list(K)
+        if len(self.K) == num_scales:  # encoder path only → mirror for decoder
+            self.K = self.K + self.K[::-1][1:]
         assert len(self.K) == num_scales*2-1, "K must be an int or a list of length num_scales or num_scales*2-1"
         
         # Edge encoder
