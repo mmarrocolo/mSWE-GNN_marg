@@ -63,9 +63,9 @@ parameters:
   temporal_dataset_parameters.previous_t:
     value: 3
   trainer_options.max_epochs:
-    value: 500
+    value: 1000
   trainer_options.patience:
-    value: 100          # reduced from 300 so bad runs don't drag on
+    value: 300         # reduced from 300 so bad runs don't drag on
   trainer_options.conservation:
     value: 0
   trainer_options.curriculum_epoch:
