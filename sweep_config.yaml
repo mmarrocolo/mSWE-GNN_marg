@@ -30,15 +30,14 @@ parameters:
   # --- architecture ---
   # 96 is the upper limit before memory gets tight with large batch/rollout combos
   models.hid_features:
-    values: [32, 64, 80]
-    # delete 80
+    values: [32, 64]
 
   # K as top-level key so W&B doesn't need to reconstruct a nested dict.
   # Each preset is [encoder path only]: model mirrors it to build the full U-net K.
   K:
     values:
       - [1, 1, 1, 3, 3, 2, 1]
-      - [1, 1, 1, 5, 4, 3, 2]
+      - [1, 1, 1, 5, 4, 3, 2] 
       - [1, 2, 2, 7, 5, 4, 3]
 
   # --- training dynamics ---
@@ -50,8 +49,8 @@ parameters:
     # max: 5
 
   trainer_options.batch_size:
-    values: [2, 4, 6]
-    # 8
+    values: [2, 4, 6, 8]
+    
 
   lr_info.learning_rate:
     distribution: log_uniform_values
