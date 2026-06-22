@@ -52,4 +52,7 @@ else
 fi
 
 # --- run fine-tuning ---
-python finetune_ahr.py --config config_finetune_100m_velocity.yaml $RESUME_FLAG 2>&1 | tee logs/${SLURM_JOB_ID}_finetune.log
+CONFIG=${MSWE_CONFIG:-config_finetune_100m_velocity.yaml}
+OUTPUT=${MSWE_OUTPUT:-results/finetuned_ahr.h5}
+echo "Config: $CONFIG  Output: $OUTPUT"
+python finetune_ahr.py --config $CONFIG --output $OUTPUT $RESUME_FLAG 2>&1 | tee logs/${SLURM_JOB_ID}_finetune.log

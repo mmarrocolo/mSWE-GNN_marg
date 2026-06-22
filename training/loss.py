@@ -81,8 +81,8 @@ def get_multiscale_loss(diff, data, only_where_water=True, type_loss='RMSE', nod
 
     return multiscale_loss
 
-def loss_function(preds, real, data, BC, type_loss='RMSE', only_where_water=False, 
-                  conservation=0, velocity_scaler=1):
+def loss_function(preds, real, data, BC, type_loss='RMSE', only_where_water=False,
+                  conservation=0, velocity_scaler=1, shallow_weight=1.0, shallow_threshold=0.30):
     '''
     Calculates loss between predictions and real values
     
@@ -105,6 +105,16 @@ def loss_function(preds, real, data, BC, type_loss='RMSE', only_where_water=Fals
         scales loss in velocity terms by a factor velocity_scaler
     '''
     diff = preds - real
+
+    # Upweight shallow wet cells to improve CSI at low thresholds
+    if shallow_weight != 1.0:
+        wd_real = real[:, 0]
+        shallow_mask = (wd_real > 0) & (wd_real <= shallow_threshold)
+        sqrt_w = torch.where(shallow_mask,
+                             wd_real.new_full((), shallow_weight ** 0.5),
+                             wd_real.new_ones(()))
+        diff = diff.clone()
+        diff[:, 0] = diff[:, 0] * sqrt_w
 
     if 'node_ptr' in data.keys():
         loss = get_multiscale_loss(diff, data, only_where_water, type_loss, nodes_dim=0)

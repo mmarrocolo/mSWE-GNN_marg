@@ -1,0 +1,77 @@
+# Fine-tuning config — weighted RMSE (upweight shallow wet cells, no conservation)
+# rollout=5, shallow_weight=3 for WD in (0, 0.30m], conservation=0
+
+dataset_parameters:
+  dataset_folder    : 'database/datasets'
+  temporal_res      : 60
+  train_dataset_name: 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart'
+  train_size        : 1
+  val_prcnt         : 0
+  test_dataset_name : 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart'
+  seed              : 0
+
+scalers:
+  DEM_scaler        : 'standard'
+  slope_scaler      : null
+  area_scaler       : 'standard'
+  edge_length_scaler: 'standard'
+  edge_slope_scaler : null
+  WD_scaler         : null
+  V_scaler          : null
+
+selected_node_features:
+  slopes        : False
+  slope         : False
+  area          : True
+  DEM           : True
+
+selected_edge_features:
+  edge_length           : True
+  edge_relative_distance: False
+  edge_slope            : False
+
+temporal_dataset_parameters:
+  rollout_steps : 5
+  previous_t    : 3
+  time_start    : 0
+  time_stop     : -1
+
+models:
+  model_type              : 'MSGNN'
+  hid_features            : 64
+  mlp_layers              : 3
+  seed                    : 666
+  learned_residuals       : True
+  mlp_activation          : 'prelu'
+  gnn_activation          : 'tanh'
+  edge_mlp                : True
+  normalize               : True
+  with_filter_matrix      : True
+  with_gradient           : True
+  with_WL                 : True
+  K                       : [1, 2, 2, 7, 5, 4, 3]
+  learned_pooling         : False
+  skip_connections        : True
+
+trainer_options:
+  type_loss             : 'RMSE'
+  only_where_water      : True
+  batch_size            : 2
+  conservation          : 0
+  velocity_scaler       : 7
+  shallow_weight        : 3.0
+  shallow_threshold     : 0.30
+  curriculum_epoch      : 15
+  patience              : 300
+  max_epochs            : 1000
+
+lr_info:
+  learning_rate   : 0.0006868772974210106
+  weight_decay    : 0
+  scheduler       : 'cosine'
+  T_max           : 1000
+  eta_min         : 1.0e-6
+  gamma           : 0.7
+  step_size       : 10
+
+saved_model: 'results/finetuned_dk15.h5'
