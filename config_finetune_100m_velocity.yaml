@@ -55,15 +55,14 @@ models:
   with_filter_matrix      : True
   with_gradient           : True
   with_WL                 : True
-  K                       : [1,1,1,5,4,3,2]
+  K                       : [1, 2, 2, 7, 5, 4, 3]
   learned_pooling         : False
   skip_connections        : True
 
 trainer_options:
   type_loss             : 'RMSE'
   only_where_water      : True
-  # batch_size            : 2
-  batch_size            : 4
+  batch_size            : 2
   conservation          : 0
   velocity_scaler       : 7
   curriculum_epoch      : 15
@@ -72,7 +71,7 @@ trainer_options:
 
 # learning rate — lower for fine-tuning
 lr_info:
-  learning_rate   : 0.001
+  learning_rate   : 0.0006868772974210106
   weight_decay    : 0
   gamma           : 0.7
   step_size       : 10
