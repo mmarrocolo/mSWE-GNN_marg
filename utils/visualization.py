@@ -1096,12 +1096,10 @@ class PlotRollout():
         HTML(self.anim.to_html5_video())
 
     def _get_CSI(self, water_threshold=0):
-        # previously: return get_CSI(self._predicted_rollout_s0, self._real_rollout_s0, water_threshold=water_threshold)
-        return get_CSI(self.predicted_rollout, self.real_rollout, water_threshold=water_threshold)
+        return get_CSI(self._predicted_rollout_s0, self._real_rollout_s0, water_threshold=water_threshold)
 
     def _get_F1(self, water_threshold=0):
-        # previously: return get_F1(self._predicted_rollout_s0, self._real_rollout_s0, water_threshold=water_threshold)
-        return get_F1(self.predicted_rollout, self.real_rollout, water_threshold=water_threshold)
+        return get_F1(self._predicted_rollout_s0, self._real_rollout_s0, water_threshold=water_threshold)
 
     def _plot_metric(self, metric_name='CSI', water_thresholds=[0.05, 0.3], ax=None):
         '''Plots metric in time for different water_thresholds
@@ -1166,6 +1164,5 @@ class PlotRollout():
         return ax
 
     def _get_rollout_loss(self, type_loss='RMSE', only_where_water=False):
-        # previously: return get_rollout_loss(self._predicted_rollout_s0, self._real_rollout_s0, ...)
-        return get_rollout_loss(self.predicted_rollout, self.real_rollout,
+        return get_rollout_loss(self._predicted_rollout_s0, self._real_rollout_s0,
                                 type_loss=type_loss, only_where_water=only_where_water)
