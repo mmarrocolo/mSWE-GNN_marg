@@ -201,13 +201,23 @@ class LightningTrainer(L.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        optimizer = optim.AdamW(self.parameters(), 
-                                lr=self.lr_info['learning_rate'], 
+        optimizer = optim.AdamW(self.parameters(),
+                                lr=self.lr_info['learning_rate'],
                                 weight_decay=self.lr_info['weight_decay'])
-        
-        lr_scheduler = optim.lr_scheduler.StepLR(optimizer=optimizer, 
-                                               step_size=self.lr_info['step_size'], 
-                                               gamma=self.lr_info['gamma'])
+
+        scheduler_type = self.lr_info.get('scheduler', 'step')
+        if scheduler_type == 'cosine':
+            lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+                optimizer,
+                T_max=self.lr_info.get('T_max', 500),
+                eta_min=self.lr_info.get('eta_min', 1e-6)
+            )
+        else:
+            lr_scheduler = optim.lr_scheduler.StepLR(
+                optimizer=optimizer,
+                step_size=self.lr_info['step_size'],
+                gamma=self.lr_info['gamma']
+            )
         return [optimizer], [lr_scheduler]
         
     def validation_step(self, batch, batch_idx):

@@ -73,6 +73,9 @@ trainer_options:
 lr_info:
   learning_rate   : 0.0006868772974210106
   weight_decay    : 0
+  scheduler       : 'cosine'
+  T_max           : 1000
+  eta_min         : 1.0e-6
   gamma           : 0.7
   step_size       : 10
 
