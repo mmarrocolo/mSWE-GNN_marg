@@ -1,5 +1,5 @@
 # Fine-tuning config — weighted RMSE (upweight shallow wet cells, no conservation)
-# rollout=5, shallow_weight=3 for WD in (0, 0.30m], conservation=0
+# rollout=20, shallow_weight=3 for WD in (0, 0.30m], conservation=0
 
 dataset_parameters:
   dataset_folder    : 'database/datasets'
@@ -31,7 +31,7 @@ selected_edge_features:
   edge_slope            : False
 
 temporal_dataset_parameters:
-  rollout_steps : 5
+  rollout_steps : 20
   previous_t    : 3
   time_start    : 0
   time_stop     : -1
