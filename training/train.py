@@ -159,13 +159,17 @@ class LightningTrainer(L.LightningModule):
         self.shallow_threshold = trainer_options.get('shallow_threshold', 0.30)
         self.temporal_test_dataset_parameters = temporal_test_dataset_parameters
         self.rollout_steps = 1
-        assert self.type_loss in ['RMSE','MAE'], "loss_type must be either 'RMSE' or 'MAE'"        
+        assert self.type_loss in ['RMSE','MAE'], "loss_type must be either 'RMSE' or 'MAE'"
         self.curriculum_epoch = trainer_options['curriculum_epoch']
+        self.ss_start_prob = trainer_options.get('scheduled_sampling_start', 0.0)
+        self.ss_decay_epochs = trainer_options.get('scheduled_sampling_epochs', 1)
         
     def training_step(self, batch):
         self.log("rollout_steps", torch.tensor(self.rollout_steps, dtype=torch.float32), on_step=False, on_epoch=True)
         temp = adapt_batch_training(batch)
         roll_loss = []
+        ss_prob = max(0.0, self.ss_start_prob * (1.0 - self.current_epoch / self.ss_decay_epochs))
+        self.log("ss_prob", torch.tensor(ss_prob), on_step=False, on_epoch=True)
 
         for i in range(self.rollout_steps):
             temp.x[:,-self.dynamic_vars:] = apply_boundary_condition(temp.x[:,-self.dynamic_vars:], 
@@ -184,7 +188,8 @@ class LightningTrainer(L.LightningModule):
                 print(f"[NaN-DEBUG] NaN in temp.x at rollout step {i} (before preds): "
                       f"nan_count={temp.x.isnan().sum().item()}")
 
-            temp.x = use_prediction(temp.x, preds, self.model.previous_t)
+            next_input = temp.y[:,:,i] if (ss_prob > 0 and torch.rand(1).item() < ss_prob) else preds
+            temp.x = use_prediction(temp.x, next_input, self.model.previous_t)
 
             loss = loss_function(preds, temp.y[:,:,i], temp, temp.BC[:,-2:,i+1].mean(1), type_loss=self.type_loss,
                            only_where_water=self.only_where_water, conservation=self.conservation,
