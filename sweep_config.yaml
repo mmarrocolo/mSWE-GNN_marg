@@ -19,6 +19,9 @@ method: bayes
 metric:
   name: val_loss
   goal: minimize
+  # Alternative: optimise directly for CSI
+  # name: val_CSI_005
+  # goal: maximize
 
 early_terminate:
   type: hyperband
@@ -57,7 +60,13 @@ parameters:
     min: 0.0005
     max: 0.003
 
+  # --- loss weighting ---
+  trainer_options.shallow_weight:
+    values: [1, 2, 3, 5, 10]   # 1 = no upweighting (baseline); >1 upweights shallow wet cells
+
   # --- fixed values (pinned here so they appear in every run's W&B config) ---
+  trainer_options.shallow_threshold:
+    value: 0.30                 # upweight cells with 0 < WD <= 0.30 m
   saved_model:
     value: ''             # always train from scratch in the sweep
   temporal_dataset_parameters.previous_t:
