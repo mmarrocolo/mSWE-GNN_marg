@@ -1,5 +1,5 @@
-# Fine-tuning config — weighted RMSE (upweight shallow wet cells, no conservation)
-# rollout=10, shallow_weight=3 for WD in (0, 0.30m], conservation=0, warm-start from finetune_weighted_rmse
+# Train from scratch — weighted RMSE (upweight shallow wet cells, no conservation)
+# rollout=10 via curriculum (epoch+1 per 15 epochs), shallow_weight=3 for WD in (0, 0.30m]
 
 dataset_parameters:
   dataset_folder    : 'database/datasets'
@@ -61,7 +61,7 @@ trainer_options:
   velocity_scaler       : 7
   shallow_weight        : 3.0
   shallow_threshold     : 0.30
-  curriculum_epoch      : 0
+  curriculum_epoch      : 15
   patience              : 300
   max_epochs            : 1000
 
@@ -74,4 +74,4 @@ lr_info:
   gamma           : 0.7
   step_size       : 10
 
-saved_model: 'results/finetune_weighted_rmse.h5'
+saved_model: ''

@@ -1,5 +1,6 @@
-# Best sweep run config — re-run to get a clean checkpoint
-# K=[1,2,2,7,5,4,3], hid=64, lr=0.000687, rollout=5, batch=2, from scratch
+# Best sweep run — rollout5_hid32_gpu (id: ffphz2b4)
+# val_loss=0.3215, val_CSI_005=0.6744, val_CSI_03=0.6772
+# K=[1,1,1,5,4,3,2], hid=32, lr=0.000518, rollout=5, batch=4, shallow_weight=5
 
 dataset_parameters:
   dataset_folder    : 'database/datasets'
@@ -38,7 +39,7 @@ temporal_dataset_parameters:
 
 models:
   model_type              : 'MSGNN'
-  hid_features            : 64
+  hid_features            : 32
   mlp_layers              : 3
   seed                    : 666
   learned_residuals       : True
@@ -49,23 +50,28 @@ models:
   with_filter_matrix      : True
   with_gradient           : True
   with_WL                 : True
-  K                       : [1, 2, 2, 7, 5, 4, 3]
+  K                       : [1, 1, 1, 5, 4, 3, 2]
   learned_pooling         : False
   skip_connections        : True
 
 trainer_options:
   type_loss             : 'RMSE'
   only_where_water      : True
-  batch_size            : 2
+  batch_size            : 4
   conservation          : 0
   velocity_scaler       : 7
+  shallow_weight        : 5
+  shallow_threshold     : 0.30
   curriculum_epoch      : 15
-  patience              : 100
-  max_epochs            : 500
+  patience              : 300
+  max_epochs            : 1000
 
 lr_info:
-  learning_rate   : 0.0006868772974210106
+  learning_rate   : 0.0005177909168244793
   weight_decay    : 0
+  scheduler       : 'cosine'
+  T_max           : 1000
+  eta_min         : 1.0e-6
   gamma           : 0.7
   step_size       : 10
 
