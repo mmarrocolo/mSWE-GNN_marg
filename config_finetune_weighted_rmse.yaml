@@ -1,5 +1,6 @@
 # Train from scratch — weighted RMSE (upweight shallow wet cells, no conservation)
 # rollout=10 via curriculum (epoch+1 per 15 epochs), shallow_weight=3 for WD in (0, 0.30m]
+# Extended run: patience and max_epochs doubled, T_max matches; starts from best_sweep_weightedrmse.h5
 
 dataset_parameters:
   dataset_folder    : 'database/datasets'
@@ -62,16 +63,16 @@ trainer_options:
   shallow_weight        : 3.0
   shallow_threshold     : 0.30
   curriculum_epoch      : 15
-  patience              : 300
-  max_epochs            : 1000
+  patience              : 500
+  max_epochs            : 2000
 
 lr_info:
   learning_rate   : 0.0006868772974210106
   weight_decay    : 0
   scheduler       : 'cosine'
-  T_max           : 1000
+  T_max           : 2000
   eta_min         : 1.0e-6
   gamma           : 0.7
   step_size       : 10
 
-saved_model: ''
+saved_model: 'results/best_sweep_weightedrmse.h5'
