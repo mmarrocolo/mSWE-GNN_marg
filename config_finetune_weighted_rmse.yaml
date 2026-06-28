@@ -32,7 +32,7 @@ selected_edge_features:
   edge_slope            : False
 
 temporal_dataset_parameters:
-  rollout_steps : 10
+  rollout_steps : 5
   previous_t    : 3
   time_start    : 0
   time_stop     : -1
@@ -75,4 +75,4 @@ lr_info:
   gamma           : 0.7
   step_size       : 10
 
-saved_model: 'results/best_sweep_weightedrmse.h5'
+saved_model: 'results/finetuned_dk15.h5'
