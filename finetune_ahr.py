@@ -173,10 +173,10 @@ def main():
     # early_stopping = EarlyStopping(
     #     "val_loss", mode="min", patience=trainer_options["patience"], min_delta=1e-5
     # )
-    early_stopping = EarlyStopping(
-        "val_loss", mode="min", patience=trainer_options["patience"], min_delta=1e-5,
-        check_on_train_epoch_end=False
-    )
+    # early_stopping = EarlyStopping(
+    #     "val_loss", mode="min", patience=trainer_options["patience"], min_delta=1e-5,
+    #     check_on_train_epoch_end=False
+    # )
 
     trainer = L.Trainer(
         accelerator="auto",
@@ -188,7 +188,7 @@ def main():
         precision="32",
         enable_progress_bar=True,
         logger=wandb_logger,
-        callbacks=[checkpoint_callback, curriculum_callback, early_stopping],
+        callbacks=[checkpoint_callback, curriculum_callback], #early_stopping
     )
 
     print("Starting fine-tuning...")
