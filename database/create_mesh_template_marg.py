@@ -138,6 +138,7 @@ def create_mesh_template_pkl(
     simplify_tolerance=0,
     n_timesteps=10,
     sfincs_map_nc=None,
+    outflow_ghost_cells=False,
 ):
     """
     Create a mesh template pickle file from shapefile + DEM.
@@ -315,7 +316,7 @@ def create_mesh_template_pkl(
         else:
             edge_BC_mid = finest_mesh.node_xy[finest_mesh.edge_index_BC].mean(1)
             mesh_list = interpolate_BC_location_multiscale(mesh_list, edge_BC_mid)
-        mesh_list = [add_ghost_cells_mesh(m) for m in mesh_list]
+        mesh_list = [add_ghost_cells_mesh(m, outflow=outflow_ghost_cells) for m in mesh_list]
         mesh_list = mesh_list[::-1]  # ADDED TO FLIP THE ORDER so that the finest is first (sfincs at index 0, coarsest at -1)
 
         multiscale_mesh = MultiscaleMesh()
@@ -339,7 +340,7 @@ def create_mesh_template_pkl(
         print(f"   Multiscale meshes: {mesh.num_meshes}")
         print(f"   Boundary nodes (ghost cells): {len(mesh.ghost_cells_ids)}")
     else:
-        mesh = add_ghost_cells_mesh(finest_mesh)
+        mesh = add_ghost_cells_mesh(finest_mesh, outflow=outflow_ghost_cells)
         print(f"   Boundary nodes (ghost cells): {len(mesh.ghost_cells_ids)}")
 
         n_faces = mesh.face_x.shape[0]
@@ -390,9 +391,30 @@ def create_mesh_template_pkl(
         data.intra_mesh_edge_index = torch.LongTensor(mesh.intra_mesh_dual_edge_index)
 
         # Keep BC at finest scale only, as expected by training/inference pipeline.
-        n_bc_finest = len(mesh.meshes[-1].ghost_cells_ids)
+        # Option B: uncomment below (meshes[0] = SFINCS after [::-1], ghost cells SFINCS-first)
+        # finest_mesh_for_bc = mesh.meshes[0]
+        # n_bc_finest = len(finest_mesh_for_bc.ghost_cells_ids)
+        # data.node_BC = data.node_BC[:n_bc_finest]
+        # data.edge_BC_length = data.edge_BC_length[:n_bc_finest]
+        # data.finest_offset = int(mesh.face_ptr[0])
+        finest_mesh_for_bc = mesh.meshes[-1]
+        n_bc_finest = len(finest_mesh_for_bc.ghost_cells_ids)
         data.node_BC = data.node_BC[-n_bc_finest:]
         data.edge_BC_length = data.edge_BC_length[-n_bc_finest:]
+
+    # Option B: inflow / outflow split — uncomment to enable:
+    # finest = mesh.meshes[0] if with_multiscale else mesh
+    # if hasattr(finest, 'ghost_cells_ids_inflow'):
+    #     n_in = len(finest.ghost_cells_ids_inflow)
+    #     data.node_BC_inflow  = data.node_BC[:n_in]
+    #     data.node_BC_outflow = data.node_BC[n_in:]
+    #     data.node_BC = data.node_BC_inflow
+    # else:
+    #     data.node_BC_inflow  = data.node_BC
+    #     data.node_BC_outflow = torch.zeros(0, dtype=torch.int32)
+    # print(f"   Inflow ghost cells (node_BC): {len(data.node_BC)}")
+    # print(f"   Outflow ghost cells:          {len(data.node_BC_outflow)}")
+    print(f"   node_BC (ghost cells): {len(data.node_BC)}")
 
     data.BC = torch.FloatTensor(BC_dummy).unsqueeze(0).repeat(len(data.node_BC), 1, 1)
     data.type_BC = torch.tensor(2, dtype=torch.int)  # 2 = discharge
@@ -426,7 +448,8 @@ def create_mesh_template_pkl(
 
 def create_mesh_template_from_pol(polygon_path, xyz_path, output_pkl_path,
                                    with_multiscale=False, number_of_multiscales=4,
-                                   mesh_resolutions=None, n_timesteps=10, sfincs_map_nc=None):
+                                   mesh_resolutions=None, n_timesteps=10, sfincs_map_nc=None,
+                                   outflow_ghost_cells=False):
     """Create a mesh template directly from a polygon file and .xyz DEM,
     bypassing the shapefile conversion step.
 
@@ -530,7 +553,7 @@ def create_mesh_template_from_pol(polygon_path, xyz_path, output_pkl_path,
             best = int(dists.argmax())
             edge_BC_mid = all_bc_mids[best:best+1]
             mesh_list = interpolate_BC_location_multiscale(mesh_list, edge_BC_mid)
-        mesh_list = [add_ghost_cells_mesh(m) for m in mesh_list]
+        mesh_list = [add_ghost_cells_mesh(m, outflow=outflow_ghost_cells) for m in mesh_list]
         mesh_list = mesh_list[::-1]  # finest first (sfincs at index 0, coarsest at -1)
 
         multiscale_mesh = MultiscaleMesh()
@@ -551,7 +574,7 @@ def create_mesh_template_from_pol(polygon_path, xyz_path, output_pkl_path,
         DEM = update_ghost_cells_attributes(mesh, DEM)[0]
         print(f"   Multiscale meshes: {mesh.num_meshes}")
     else:
-        mesh = add_ghost_cells_mesh(finest_mesh)
+        mesh = add_ghost_cells_mesh(finest_mesh, outflow=outflow_ghost_cells)
         n_faces = mesh.face_x.shape[0]
         WD = np.zeros((n_faces, n_timesteps), dtype=np.float32)
         VX = np.zeros((n_faces, n_timesteps), dtype=np.float32)
@@ -578,9 +601,27 @@ def create_mesh_template_from_pol(polygon_path, xyz_path, output_pkl_path,
         data.edge_ptr = torch.LongTensor(mesh.dual_edge_ptr)
         data.intra_edge_ptr = torch.LongTensor(mesh.intra_edge_ptr)
         data.intra_mesh_edge_index = torch.LongTensor(mesh.intra_mesh_dual_edge_index)
-        n_bc_finest = len(mesh.meshes[-1].ghost_cells_ids)
+        # Option B: uncomment below (meshes[0] = SFINCS after [::-1], ghost cells SFINCS-first)
+        # finest_mesh_for_bc = mesh.meshes[0]
+        # n_bc_finest = len(finest_mesh_for_bc.ghost_cells_ids)
+        # data.node_BC = data.node_BC[:n_bc_finest]
+        # data.edge_BC_length = data.edge_BC_length[:n_bc_finest]
+        # data.finest_offset = int(mesh.face_ptr[0])
+        finest_mesh_for_bc = mesh.meshes[-1]
+        n_bc_finest = len(finest_mesh_for_bc.ghost_cells_ids)
         data.node_BC = data.node_BC[-n_bc_finest:]
         data.edge_BC_length = data.edge_BC_length[-n_bc_finest:]
+
+    # Option B: inflow / outflow split — uncomment to enable:
+    # finest = mesh.meshes[0] if with_multiscale else mesh
+    # if hasattr(finest, 'ghost_cells_ids_inflow'):
+    #     n_in = len(finest.ghost_cells_ids_inflow)
+    #     data.node_BC_inflow  = data.node_BC[:n_in]
+    #     data.node_BC_outflow = data.node_BC[n_in:]
+    #     data.node_BC = data.node_BC_inflow
+    # else:
+    #     data.node_BC_inflow  = data.node_BC
+    #     data.node_BC_outflow = torch.zeros(0, dtype=torch.int32)
 
     BC_dummy = np.zeros((n_timesteps, 2), dtype=np.float32)
     data.BC = torch.FloatTensor(BC_dummy).unsqueeze(0).repeat(len(data.node_BC), 1, 1)
@@ -648,6 +689,11 @@ def main():
         default=10,
         help='Number of dummy time steps (will be replaced by SFINCS converter)'
     )
+    parser.add_argument(
+        '--outflow-ghost-cells',
+        action='store_true',
+        help='Create ghost cells with outward edges [BC_face -> ghost] for open outflow boundaries (SFINCS msk==3)'
+    )
 
     args = parser.parse_args()
 
@@ -667,12 +713,13 @@ def main():
                 return 1
         try:
             create_mesh_template_from_pol(
-                pol_path=args.pol,
+                polygon_path=args.pol,
                 xyz_path=args.xyz,
                 output_pkl_path=output,
                 with_multiscale=args.multiscale,
                 number_of_multiscales=args.num_scales,
                 n_timesteps=args.timesteps,
+                outflow_ghost_cells=args.outflow_ghost_cells,
             )
             return 0
         except Exception as e:
@@ -703,6 +750,7 @@ def main():
             number_of_multiscales=args.num_scales,
             simplify_tolerance=args.simplify,
             n_timesteps=args.timesteps,
+            outflow_ghost_cells=args.outflow_ghost_cells,
         )
         return 0
     except Exception as e:

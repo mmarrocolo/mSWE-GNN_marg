@@ -34,24 +34,38 @@ export PYTHONPATH=/p/11210554-dtc-hydrology-next/marrocol/mSWE-GNN_marg
 PYTHON=/u/marrocol/.conda/envs/mswe-gnn/bin/python
 
 # --- build PKL dataset if not already present ---
-DATASET=database/datasets/train/ahr_river_v03_marg_additionalsrc_velocity_100m_cutpolygon_warmstart.pkl
-SFINCS_DIR=database/raw_datasets_ahr/Simulations/ahr_river_v03_Marg_additionalsrc_velocity_100m_cutpolygon_warmstart
+# DATASET=database/datasets/train/ahr_river_v03_marg_additionalsrc_velocity_100m_cutpolygon_warmstart.pkl
+# SFINCS_DIR=database/raw_datasets_ahr/Simulations/ahr_river_v03_Marg_additionalsrc_velocity_100m_cutpolygon_warmstart
+# if [ ! -f "$DATASET" ]; then
+#     $PYTHON database/convert_sfincs_to_pkl_marg.py \
+#         --sfincs-map   "$SFINCS_DIR/sfincs_map.nc" \
+#         --template-pkl database/datasets/train/template_100m.pkl \
+#         --dataset-name ahr_river_v03_marg_additionalsrc_velocity_100m_cutpolygon_warmstart \
+#         --out-root     database/datasets \
+#         --vx-var u --vy-var v \
+#         --src-file     "$SFINCS_DIR/sfincs.src" \
+#         --dis-file     "$SFINCS_DIR/sfincs.dis" \
+#         2>&1 | tee logs/${SLURM_JOB_ID}_dataset.log
+# fi
+DATASET=database/datasets/train/ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_inflow_outflow_gc.pkl
+TEMPLATE=database/datasets/train/template_100m_inflow_outflow_gc.pkl
+SFINCS_DIR=database/raw_datasets_ahr/Simulations/ahr_river_v03_Marg_additionalsrc_velocity_100m_cutpolygon
+SFINCS_DIR_WARMSTART=database/raw_datasets_ahr/Simulations/ahr_river_v03_Marg_additionalsrc_velocity_100m_cutpolygon_warmstart
 if [ ! -f "$DATASET" ]; then
-    $PYTHON database/convert_sfincs_to_pkl_marg.py \
-        --sfincs-map   "$SFINCS_DIR/sfincs_map.nc" \
-        --template-pkl database/datasets/train/template_100m.pkl \
-        --dataset-name ahr_river_v03_marg_additionalsrc_velocity_100m_cutpolygon_warmstart \
-        --out-root     database/datasets \
-        --vx-var u --vy-var v \
-        --src-file     "$SFINCS_DIR/sfincs.src" \
-        --dis-file     "$SFINCS_DIR/sfincs.dis" \
+    if [ ! -f "$TEMPLATE" ]; then
+        $PYTHON build_template_inflow_outflow_gc.py \
+            2>&1 | tee logs/${SLURM_JOB_ID}_template.log
+    fi
+    $PYTHON run_convert_warmstart_inflow_outflow_gc.py \
         2>&1 | tee logs/${SLURM_JOB_ID}_dataset.log
 fi
 
 # --- run fine-tuning ---
 # Override via env vars when submitting: MSWE_CONFIG=... MSWE_OUTPUT=... sbatch run_finetune_hal8.sh
-CONFIG=${MSWE_CONFIG:-config_finetune_100m_velocity.yaml}
-OUTPUT=${MSWE_OUTPUT:-results/finetuned_ahr.h5}
+# CONFIG=${MSWE_CONFIG:-config_finetune_100m_velocity.yaml}
+# OUTPUT=${MSWE_OUTPUT:-results/finetuned_ahr.h5}
+CONFIG=${MSWE_CONFIG:-config_best_sweep_outflow_gc.yaml}
+OUTPUT=${MSWE_OUTPUT:-results/best_sweep_inflow_outflow_gc.h5}
 echo "Config: $CONFIG"
 echo "Output: $OUTPUT"
 
