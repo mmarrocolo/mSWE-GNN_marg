@@ -74,14 +74,14 @@ trainer_options:
   shallow_weight        : 5
   shallow_threshold     : 0.30
   curriculum_epoch      : 15
-  patience              : 300
-  max_epochs            : 1000
+  patience              : 500
+  max_epochs            : 2000
 
 lr_info:
   learning_rate   : 0.0005177909168244793
   weight_decay    : 0
   scheduler       : 'cosine'
-  T_max           : 1000
+  T_max           : 2000
   eta_min         : 1.0e-6
   gamma           : 0.7
   step_size       : 10
