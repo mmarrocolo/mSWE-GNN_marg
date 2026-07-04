@@ -8,6 +8,7 @@ Usage:
 
 import argparse
 import os
+import shutil
 import time
 import torch
 import wandb
@@ -169,6 +170,14 @@ def main():
         save_top_k=1,
         save_last=True,
     )
+    # Second checkpoint: best val_CSI_005 (may pick a different epoch than best val_loss)
+    checkpoint_csi_callback = ModelCheckpoint(
+        dirpath=args.checkpoint_dir,
+        filename="best_csi",
+        monitor="val_CSI_005",
+        mode="max",
+        save_top_k=1,
+    )
     curriculum_callback = CurriculumLearning(max_rollout_steps, patience=5)
     # early_stopping = EarlyStopping(
     #     "val_loss", mode="min", patience=trainer_options["patience"], min_delta=1e-5
@@ -188,7 +197,7 @@ def main():
         precision="32",
         enable_progress_bar=True,
         logger=wandb_logger,
-        callbacks=[checkpoint_callback, curriculum_callback, early_stopping],
+        callbacks=[checkpoint_callback, checkpoint_csi_callback, curriculum_callback, early_stopping],
     )
 
     print("Starting fine-tuning...")
@@ -207,6 +216,15 @@ def main():
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
     trainer.save_checkpoint(args.output)
     print(f"Fine-tuned model saved to: {args.output}")
+
+    # Also save the best-CSI checkpoint alongside (it may come from a different epoch)
+    if checkpoint_csi_callback.best_model_path:
+        base, ext = os.path.splitext(args.output)
+        csi_output = f"{base}_bestCSI{ext or '.h5'}"
+        shutil.copyfile(checkpoint_csi_callback.best_model_path, csi_output)
+        score = checkpoint_csi_callback.best_model_score
+        print(f"Best-CSI model saved to: {csi_output}"
+              + (f" (val_CSI_005={float(score):.4f})" if score is not None else ""))
 
     # --- Full evaluation ---
     test_dataset_name = dataset_parameters["test_dataset_name"]

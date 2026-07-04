@@ -121,10 +121,30 @@ def parse_src_file(src_path):
 def parse_dis_file(dis_path):
     """Read SFINCS discharge file (time[s], q1, q2, ...).
     Returns (time_s [T], discharge [T, n_src]).
+
+    NaN entries (e.g. a source time series shorter than the .dis time axis,
+    padded with NaN) are forward-filled per column with the last valid value,
+    so out-of-range interpolation fills never propagate NaN into the BC.
     """
     data = np.loadtxt(dis_path)
     time_s = data[:, 0]
     discharge = data[:, 1:].astype(np.float32)
+
+    if np.isnan(discharge).any():
+        for i in range(discharge.shape[1]):
+            col = discharge[:, i]
+            nan_mask = np.isnan(col)
+            if nan_mask.any():
+                valid_idx = np.flatnonzero(~nan_mask)
+                if len(valid_idx) == 0:
+                    raise ValueError(f"{dis_path}: source column {i} is all NaN")
+                pos = np.searchsorted(valid_idx, np.flatnonzero(nan_mask), side='right') - 1
+                # NaN before the first valid value: fall back to the first valid value
+                filled_idx = valid_idx[pos.clip(min=0)]
+                discharge[nan_mask, i] = col[filled_idx]
+                print(f"  parse_dis_file: source column {i} had {nan_mask.sum()} NaN(s) "
+                      f"(t {time_s[nan_mask].min():.0f}-{time_s[nan_mask].max():.0f} s) - forward-filled")
+
     return time_s, discharge
 
 

@@ -1926,43 +1926,40 @@ def add_ghost_cells_mesh(mesh, outflow=False):
              if False, [ghost -> interior] (prescribed BC).
     """
     if not mesh.added_ghost_cells:
-        # Option B: split ghost cells by SFINCS BC type when msk attributes are present
-        # (SFINCS mesh: msk==2 -> inflow ghosts [ghost -> interior],
-        #               msk==3 -> outflow ghosts [interior -> ghost]).
-        # gmsh coarse meshes have no msk attributes -> legacy single-BC path below.
-        has_two_types = (hasattr(mesh, 'face_BC_inflow') and len(mesh.face_BC_inflow) > 0
-                         and hasattr(mesh, 'face_BC_outflow'))
-        _has_inflow  = hasattr(mesh, 'face_BC_inflow')  and len(mesh.face_BC_inflow)  > 0
-        _has_outflow = hasattr(mesh, 'face_BC_outflow') and len(mesh.face_BC_outflow) > 0
-
-        if has_two_types:  # msk==2 AND msk==3 both present
-            gc_inflow, gn_inflow = _add_ghost_cells_for_bc(
-                mesh, mesh.face_BC_inflow, mesh.edge_index_BC_inflow,
-                mesh._other_nodes_bc_inflow, mesh.edge_BC_inflow, outflow=False)
-            gc_outflow, gn_outflow = _add_ghost_cells_for_bc(
-                mesh, mesh.face_BC_outflow, mesh.edge_index_BC_outflow,
-                mesh._other_nodes_bc_outflow, mesh.edge_BC_outflow, outflow=True)
-            mesh.ghost_cells_ids_inflow  = gc_inflow
-            mesh.ghost_cells_ids_outflow = gc_outflow
-            mesh.ghost_cells_ids = np.concatenate([gc_inflow, gc_outflow])
-            mesh.ghost_node_ids  = gn_inflow + gn_outflow
-
-        elif _has_outflow and not _has_inflow:
-            gc_ids, gn_ids = _add_ghost_cells_for_bc(
-                mesh, mesh.face_BC_outflow, mesh.edge_index_BC_outflow,
-                mesh._other_nodes_bc_outflow, mesh.edge_BC_outflow, outflow=True)
-            mesh.ghost_cells_ids_inflow  = np.zeros(0, dtype=np.int32)
-            mesh.ghost_cells_ids_outflow = gc_ids
-            mesh.ghost_cells_ids         = gc_ids
-            mesh.ghost_node_ids          = gn_ids
-
-        else:
-            the_other_node = find_BC_other_nodes(mesh)
-            gc_ids, gn_ids = _add_ghost_cells_for_bc(
-                mesh, mesh.face_BC, mesh.edge_index_BC,
-                the_other_node, mesh.edge_BC, outflow=outflow)
-            mesh.ghost_cells_ids = gc_ids
-            mesh.ghost_node_ids  = gn_ids
+        # Option B (inflow msk==2 + outflow msk==3 ghost cells) — uncomment to enable:
+        # has_two_types = (hasattr(mesh, 'face_BC_inflow') and len(mesh.face_BC_inflow) > 0
+        #                  and hasattr(mesh, 'face_BC_outflow'))
+        # _has_inflow  = hasattr(mesh, 'face_BC_inflow')  and len(mesh.face_BC_inflow)  > 0
+        # _has_outflow = hasattr(mesh, 'face_BC_outflow') and len(mesh.face_BC_outflow) > 0
+        #
+        # if has_two_types:  # msk==2 AND msk==3 both present
+        #     gc_inflow, gn_inflow = _add_ghost_cells_for_bc(
+        #         mesh, mesh.face_BC_inflow, mesh.edge_index_BC_inflow,
+        #         mesh._other_nodes_bc_inflow, mesh.edge_BC_inflow, outflow=False)
+        #     gc_outflow, gn_outflow = _add_ghost_cells_for_bc(
+        #         mesh, mesh.face_BC_outflow, mesh.edge_index_BC_outflow,
+        #         mesh._other_nodes_bc_outflow, mesh.edge_BC_outflow, outflow=True)
+        #     mesh.ghost_cells_ids_inflow  = gc_inflow
+        #     mesh.ghost_cells_ids_outflow = gc_outflow
+        #     mesh.ghost_cells_ids = np.concatenate([gc_inflow, gc_outflow])
+        #     mesh.ghost_node_ids  = gn_inflow + gn_outflow
+        #
+        # elif _has_outflow and not _has_inflow:
+        #     gc_ids, gn_ids = _add_ghost_cells_for_bc(
+        #         mesh, mesh.face_BC_outflow, mesh.edge_index_BC_outflow,
+        #         mesh._other_nodes_bc_outflow, mesh.edge_BC_outflow, outflow=True)
+        #     mesh.ghost_cells_ids_inflow  = np.zeros(0, dtype=np.int32)
+        #     mesh.ghost_cells_ids_outflow = gc_ids
+        #     mesh.ghost_cells_ids         = gc_ids
+        #     mesh.ghost_node_ids          = gn_ids
+        #
+        # else:
+        the_other_node = find_BC_other_nodes(mesh)
+        gc_ids, gn_ids = _add_ghost_cells_for_bc(
+            mesh, mesh.face_BC, mesh.edge_index_BC,
+            the_other_node, mesh.edge_BC, outflow=outflow)
+        mesh.ghost_cells_ids = gc_ids
+        mesh.ghost_node_ids  = gn_ids
 
         n_total = len(mesh.ghost_cells_ids)
         mesh.dual_edge_index_BC = mesh.dual_edge_index[:, -n_total:]

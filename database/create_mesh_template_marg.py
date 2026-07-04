@@ -391,25 +391,30 @@ def create_mesh_template_pkl(
         data.intra_mesh_edge_index = torch.LongTensor(mesh.intra_mesh_dual_edge_index)
 
         # Keep BC at finest scale only, as expected by training/inference pipeline.
-        # meshes[0] = SFINCS (finest) after [::-1]; its ghost cells come first in the stack.
-        finest_mesh_for_bc = mesh.meshes[0]
+        # Option B: uncomment below (meshes[0] = SFINCS after [::-1], ghost cells SFINCS-first)
+        # finest_mesh_for_bc = mesh.meshes[0]
+        # n_bc_finest = len(finest_mesh_for_bc.ghost_cells_ids)
+        # data.node_BC = data.node_BC[:n_bc_finest]
+        # data.edge_BC_length = data.edge_BC_length[:n_bc_finest]
+        # data.finest_offset = int(mesh.face_ptr[0])
+        finest_mesh_for_bc = mesh.meshes[-1]
         n_bc_finest = len(finest_mesh_for_bc.ghost_cells_ids)
-        data.node_BC = data.node_BC[:n_bc_finest]
-        data.edge_BC_length = data.edge_BC_length[:n_bc_finest]
-        data.finest_offset = int(mesh.face_ptr[0])
+        data.node_BC = data.node_BC[-n_bc_finest:]
+        data.edge_BC_length = data.edge_BC_length[-n_bc_finest:]
 
-    # Option B: inflow / outflow split
-    finest = mesh.meshes[0] if with_multiscale else mesh
-    if hasattr(finest, 'ghost_cells_ids_inflow'):
-        n_in = len(finest.ghost_cells_ids_inflow)
-        data.node_BC_inflow  = data.node_BC[:n_in]
-        data.node_BC_outflow = data.node_BC[n_in:]
-        data.node_BC = data.node_BC_inflow
-    else:
-        data.node_BC_inflow  = data.node_BC
-        data.node_BC_outflow = torch.zeros(0, dtype=torch.int32)
-    print(f"   Inflow ghost cells (node_BC): {len(data.node_BC)}")
-    print(f"   Outflow ghost cells:          {len(data.node_BC_outflow)}")
+    # Option B: inflow / outflow split — uncomment to enable:
+    # finest = mesh.meshes[0] if with_multiscale else mesh
+    # if hasattr(finest, 'ghost_cells_ids_inflow'):
+    #     n_in = len(finest.ghost_cells_ids_inflow)
+    #     data.node_BC_inflow  = data.node_BC[:n_in]
+    #     data.node_BC_outflow = data.node_BC[n_in:]
+    #     data.node_BC = data.node_BC_inflow
+    # else:
+    #     data.node_BC_inflow  = data.node_BC
+    #     data.node_BC_outflow = torch.zeros(0, dtype=torch.int32)
+    # print(f"   Inflow ghost cells (node_BC): {len(data.node_BC)}")
+    # print(f"   Outflow ghost cells:          {len(data.node_BC_outflow)}")
+    print(f"   node_BC (ghost cells): {len(data.node_BC)}")
 
     data.BC = torch.FloatTensor(BC_dummy).unsqueeze(0).repeat(len(data.node_BC), 1, 1)
     data.type_BC = torch.tensor(2, dtype=torch.int)  # 2 = discharge
@@ -596,23 +601,27 @@ def create_mesh_template_from_pol(polygon_path, xyz_path, output_pkl_path,
         data.edge_ptr = torch.LongTensor(mesh.dual_edge_ptr)
         data.intra_edge_ptr = torch.LongTensor(mesh.intra_edge_ptr)
         data.intra_mesh_edge_index = torch.LongTensor(mesh.intra_mesh_dual_edge_index)
-        # meshes[0] = SFINCS (finest) after [::-1]; its ghost cells come first in the stack.
-        finest_mesh_for_bc = mesh.meshes[0]
+        # Option B: uncomment below (meshes[0] = SFINCS after [::-1], ghost cells SFINCS-first)
+        # finest_mesh_for_bc = mesh.meshes[0]
+        # n_bc_finest = len(finest_mesh_for_bc.ghost_cells_ids)
+        # data.node_BC = data.node_BC[:n_bc_finest]
+        # data.edge_BC_length = data.edge_BC_length[:n_bc_finest]
+        # data.finest_offset = int(mesh.face_ptr[0])
+        finest_mesh_for_bc = mesh.meshes[-1]
         n_bc_finest = len(finest_mesh_for_bc.ghost_cells_ids)
-        data.node_BC = data.node_BC[:n_bc_finest]
-        data.edge_BC_length = data.edge_BC_length[:n_bc_finest]
-        data.finest_offset = int(mesh.face_ptr[0])
+        data.node_BC = data.node_BC[-n_bc_finest:]
+        data.edge_BC_length = data.edge_BC_length[-n_bc_finest:]
 
-    # Option B: inflow / outflow split
-    finest = mesh.meshes[0] if with_multiscale else mesh
-    if hasattr(finest, 'ghost_cells_ids_inflow'):
-        n_in = len(finest.ghost_cells_ids_inflow)
-        data.node_BC_inflow  = data.node_BC[:n_in]
-        data.node_BC_outflow = data.node_BC[n_in:]
-        data.node_BC = data.node_BC_inflow
-    else:
-        data.node_BC_inflow  = data.node_BC
-        data.node_BC_outflow = torch.zeros(0, dtype=torch.int32)
+    # Option B: inflow / outflow split — uncomment to enable:
+    # finest = mesh.meshes[0] if with_multiscale else mesh
+    # if hasattr(finest, 'ghost_cells_ids_inflow'):
+    #     n_in = len(finest.ghost_cells_ids_inflow)
+    #     data.node_BC_inflow  = data.node_BC[:n_in]
+    #     data.node_BC_outflow = data.node_BC[n_in:]
+    #     data.node_BC = data.node_BC_inflow
+    # else:
+    #     data.node_BC_inflow  = data.node_BC
+    #     data.node_BC_outflow = torch.zeros(0, dtype=torch.int32)
 
     BC_dummy = np.zeros((n_timesteps, 2), dtype=np.float32)
     data.BC = torch.FloatTensor(BC_dummy).unsqueeze(0).repeat(len(data.node_BC), 1, 1)
