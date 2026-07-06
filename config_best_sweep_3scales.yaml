@@ -1,0 +1,84 @@
+# Best sweep config (ffphz2b4) on the 3-scale mesh (coarsest 2000 m mesh removed)
+# Scales: SFINCS 100 m (finest) + 500 m + 1000 m (new coarsest / bottom of the U-Net)
+# K adapted from [1,1,1,5,4,3,2] (4 scales) to [1,1,5,3,2] (3 scales):
+#   encoder K=1 at 100 m and 500 m, K=5 at the 1000 m bottom, decoder K=3 (500 m), K=2 (100 m)
+#
+# Pipeline:
+#   1. python build_template_3scales.py
+#   2. python run_convert_warmstart_3scales.py
+#   3. python finetune_ahr.py --config config_best_sweep_3scales.yaml --output results/best_sweep_3scales.h5
+
+dataset_parameters:
+  dataset_folder    : 'database/datasets'
+  temporal_res      : 60
+  train_dataset_name: 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_3scales'
+  train_size        : 1
+  val_prcnt         : 0
+  test_dataset_name : 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_3scales'
+  seed              : 0
+
+scalers:
+  DEM_scaler        : 'standard'
+  slope_scaler      : null
+  area_scaler       : 'standard'
+  edge_length_scaler: 'standard'
+  edge_slope_scaler : null
+  WD_scaler         : null
+  V_scaler          : null
+
+selected_node_features:
+  slopes        : False
+  slope         : False
+  area          : True
+  DEM           : True
+
+selected_edge_features:
+  edge_length           : True
+  edge_relative_distance: False
+  edge_slope            : False
+
+temporal_dataset_parameters:
+  rollout_steps : 5
+  previous_t    : 3
+  time_start    : 0
+  time_stop     : -1
+
+models:
+  model_type              : 'MSGNN'
+  hid_features            : 32
+  mlp_layers              : 3
+  seed                    : 666
+  learned_residuals       : True
+  mlp_activation          : 'prelu'
+  gnn_activation          : 'tanh'
+  edge_mlp                : True
+  normalize               : True
+  with_filter_matrix      : True
+  with_gradient           : True
+  with_WL                 : True
+  K                       : [1, 1, 5, 3, 2]
+  learned_pooling         : False
+  skip_connections        : True
+
+trainer_options:
+  type_loss             : 'RMSE'
+  only_where_water      : True
+  batch_size            : 4
+  conservation          : 0
+  velocity_scaler       : 7
+  shallow_weight        : 5
+  shallow_threshold     : 0.30
+  curriculum_epoch      : 15
+  patience              : 300
+  max_epochs            : 1000
+
+lr_info:
+  learning_rate   : 0.0005177909168244793
+  weight_decay    : 0
+  scheduler       : 'cosine'
+  T_max           : 1000
+  eta_min         : 1.0e-6
+  gamma           : 0.7
+  step_size       : 10
+
+saved_model: ''

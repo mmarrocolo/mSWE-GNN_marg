@@ -47,16 +47,16 @@ PYTHON=/u/marrocol/.conda/envs/mswe-gnn/bin/python
 #         --dis-file     "$SFINCS_DIR/sfincs.dis" \
 #         2>&1 | tee logs/${SLURM_JOB_ID}_dataset.log
 # fi
-DATASET=database/datasets/train/ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_inflow_outflow_gc.pkl
-TEMPLATE=database/datasets/train/template_100m_inflow_outflow_gc.pkl
+DATASET=database/datasets/train/ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_3scales.pkl
+TEMPLATE=database/datasets/train/template_100m_3scales.pkl
 SFINCS_DIR=database/raw_datasets_ahr/Simulations/ahr_river_v03_Marg_additionalsrc_velocity_100m_cutpolygon
 SFINCS_DIR_WARMSTART=database/raw_datasets_ahr/Simulations/ahr_river_v03_Marg_additionalsrc_velocity_100m_cutpolygon_warmstart
 if [ ! -f "$DATASET" ]; then
     if [ ! -f "$TEMPLATE" ]; then
-        $PYTHON build_template_inflow_outflow_gc.py \
+        $PYTHON build_template_3scales.py \
             2>&1 | tee logs/${SLURM_JOB_ID}_template.log
     fi
-    $PYTHON run_convert_warmstart_inflow_outflow_gc.py \
+    $PYTHON run_convert_warmstart_3scales.py \
         2>&1 | tee logs/${SLURM_JOB_ID}_dataset.log
 fi
 
@@ -64,8 +64,8 @@ fi
 # Override via env vars when submitting: MSWE_CONFIG=... MSWE_OUTPUT=... sbatch run_finetune_hal8.sh
 # CONFIG=${MSWE_CONFIG:-config_finetune_100m_velocity.yaml}
 # OUTPUT=${MSWE_OUTPUT:-results/finetuned_ahr.h5}
-CONFIG=${MSWE_CONFIG:-config_best_sweep_outflow_gc.yaml}
-OUTPUT=${MSWE_OUTPUT:-results/best_sweep_inflow_outflow_gc.h5}
+CONFIG=${MSWE_CONFIG:-config_best_sweep_3scales.yaml}
+OUTPUT=${MSWE_OUTPUT:-results/best_sweep_3scales.h5}
 echo "Config: $CONFIG"
 echo "Output: $OUTPUT"
 
