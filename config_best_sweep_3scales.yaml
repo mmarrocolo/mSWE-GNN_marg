@@ -7,6 +7,11 @@
 #   1. python build_template_3scales.py
 #   2. python run_convert_warmstart_3scales.py
 #   3. python finetune_ahr.py --config config_best_sweep_3scales.yaml --output results/best_sweep_3scales.h5
+#
+# 7 Jul: extended to 2000 epochs (T_max moved with max_epochs — cosine LR must not
+# hit its floor at 1000) because val_loss had not plateaued in the first 1000-epoch run.
+# For the thesis B.6 table, compare either both runs at 1000 ep or rerun the 4-scale
+# reference at 2000 ep too — asymmetric budgets confound the ablation.
 
 dataset_parameters:
   dataset_folder    : 'database/datasets'
@@ -70,13 +75,13 @@ trainer_options:
   shallow_threshold     : 0.30
   curriculum_epoch      : 15
   patience              : 300
-  max_epochs            : 1000
+  max_epochs            : 2000
 
 lr_info:
   learning_rate   : 0.0005177909168244793
   weight_decay    : 0
   scheduler       : 'cosine'
-  T_max           : 1000
+  T_max           : 2000
   eta_min         : 1.0e-6
   gamma           : 0.7
   step_size       : 10
