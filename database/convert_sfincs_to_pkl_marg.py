@@ -271,7 +271,12 @@ def main():
     print(f"  Map time steps: {len(map_times_s)}  ({map_times_s[0]:.0f}s – {map_times_s[-1]:.0f}s)")
 
     print("Computing water depth WD = max(zs - zb, 0)...")
-    WD_grid = np.maximum(zs - zb[None, :, :], 0.0).astype(np.float32)
+    # SFINCS writes zs=NaN for DRY cells. Fill them with the bed level so they
+    # enter the interpolation as WD=0. Without this, interpolate_time_series
+    # drops the NaNs and linearly interpolates between wet cells only, smearing
+    # phantom water across every dry area between wet river branches.
+    zs_filled = np.where(np.isnan(zs), zb[None, :, :], zs)
+    WD_grid = np.maximum(zs_filled - zb[None, :, :], 0.0).astype(np.float32)
 
     print("Interpolating WD to mesh...")
     WD = interpolate_time_series(source_points, WD_grid, target_points, "WD")

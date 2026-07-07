@@ -1,0 +1,14 @@
+{
+"type": "FeatureCollection",
+"name": "dis",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::32632" } },
+"features": [
+{ "type": "Feature", "properties": { "index": 0, "name": "Kreuzberg", "fid": 3.0, "easting": 355899.8, "northing": 5597311.0 }, "geometry": { "type": "Point", "coordinates": [ 355971.430672647315077, 5597633.020945179276168 ] } },
+{ "type": "Feature", "properties": { "index": 1, "name": "Denn", "fid": 4.0, "easting": 356729.2, "northing": 5594385.6 }, "geometry": { "type": "Point", "coordinates": [ 356927.173724084685091, 5594304.079195139929652 ] } },
+{ "type": "Feature", "properties": { "index": 2, "name": "Kirmutscheid", "fid": 6.0, "easting": 346396.6, "northing": 5582150.0 }, "geometry": { "type": "Point", "coordinates": [ 346313.755398812296335, 5582100.311494076624513 ] } },
+{ "type": "Feature", "properties": { "index": 3, "name": "Müsch", "fid": 8.0, "easting": 345552.7, "northing": 5583999.0 }, "geometry": { "type": "Point", "coordinates": [ 345220.815901553956792, 5583766.869843722321093 ] } },
+{ "type": "Feature", "properties": { "index": 4, "name": "new1", "fid": 10.0, "easting": 348791.19, "northing": 5590885.31 }, "geometry": { "type": "Point", "coordinates": [ 348794.747758219600655, 5590887.912499310448766 ] } },
+{ "type": "Feature", "properties": { "index": 5, "name": "Niederadenau", "fid": 11.0, "easting": 353114.5, "northing": 5589087.4 }, "geometry": { "type": "Point", "coordinates": [ 353115.090266936342232, 5588924.12935967091471 ] } },
+{ "type": "Feature", "properties": { "index": 6, "name": "new2", "fid": 12.0, "easting": 352987.3, "northing": 5592047.304 }, "geometry": { "type": "Point", "coordinates": [ 352983.277957472484559, 5592048.438054339028895 ] } }
+]
+}

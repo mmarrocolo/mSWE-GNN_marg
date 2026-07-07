@@ -11,8 +11,6 @@ For training the model run **main.py**
 
 For training and exploring the model, run **main.ipynb**
 
-For testing a model, run **test_model.py**
-
 Both **main.py** and **main.ipynb** use a **config.yaml** as reference configuration file.
 
 The repository is divided in the following folders:
