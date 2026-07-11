@@ -1,5 +1,5 @@
-# Seed-variance run (models.seed 666 -> 42), otherwise identical to config_best_sweep.yaml
-# Purpose: error bars for the thesis tables (3 seeds total: 666 = best_sweep_new_gt, 42, 1)
+# Seed-variance run (models.seed 666 -> 200), otherwise identical to config_best_sweep.yaml
+# Purpose: error bars for the thesis tables (5 seeds total: 666 = best_sweep_new_gt, 1, 200, 450, 800)
 # Best sweep run - rollout5_hid32_gpu (id: ffphz2b4)
 # K=[1,1,1,5,4,3,2], hid=32, lr=0.000518, rollout=5, batch=4, shallow_weight=5
 

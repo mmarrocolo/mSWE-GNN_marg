@@ -1,4 +1,4 @@
-# Seed-variance run (models.seed 666 -> 1), otherwise identical to config_best_sweep.yaml
+# Seed-variance run (models.seed 666 -> 450), otherwise identical to config_best_sweep.yaml
 # Purpose: error bars for the thesis tables (5 seeds total: 666 = best_sweep_new_gt, 1, 200, 450, 800)
 # Best sweep run - rollout5_hid32_gpu (id: ffphz2b4)
 # K=[1,1,1,5,4,3,2], hid=32, lr=0.000518, rollout=5, batch=4, shallow_weight=5
@@ -42,7 +42,7 @@ models:
   model_type              : 'MSGNN'
   hid_features            : 32
   mlp_layers              : 3
-  seed                    : 1
+  seed                    : 450
   learned_residuals       : True
   mlp_activation          : 'prelu'
   gnn_activation          : 'tanh'
