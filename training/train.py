@@ -157,6 +157,7 @@ class LightningTrainer(L.LightningModule):
         self.type_loss = trainer_options['type_loss']
         self.shallow_weight = trainer_options.get('shallow_weight', 1.0)
         self.shallow_threshold = trainer_options.get('shallow_threshold', 0.30)
+        self.multiscale_loss_scaler = trainer_options.get('multiscale_loss_scaler', None)
         self.temporal_test_dataset_parameters = temporal_test_dataset_parameters
         self.rollout_steps = 1
         assert self.type_loss in ['RMSE','MAE'], "loss_type must be either 'RMSE' or 'MAE'"
@@ -194,7 +195,8 @@ class LightningTrainer(L.LightningModule):
             loss = loss_function(preds, temp.y[:,:,i], temp, temp.BC[:,-2:,i+1].mean(1), type_loss=self.type_loss,
                            only_where_water=self.only_where_water, conservation=self.conservation,
                            velocity_scaler=self.velocity_scaler,
-                           shallow_weight=self.shallow_weight, shallow_threshold=self.shallow_threshold)
+                           shallow_weight=self.shallow_weight, shallow_threshold=self.shallow_threshold,
+                           multiscale_loss_scaler=self.multiscale_loss_scaler)
 
             if loss.isnan():
                 print(f"[NaN-DEBUG] NaN in loss at rollout step {i}: "

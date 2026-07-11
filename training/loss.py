@@ -52,7 +52,7 @@ def get_loss_variable_scaler(velocity_scaler=1):
     return loss_scaler
 
 def get_multiscale_loss(diff, data, only_where_water=True, type_loss='RMSE', nodes_dim=0):
-    '''Calculates loss averaged equally across all scales
+    '''Calculates loss on the finest scale only (scale 0 = SFINCS)
 
     Parameters:
     diff: torch.tensor
@@ -81,8 +81,47 @@ def get_multiscale_loss(diff, data, only_where_water=True, type_loss='RMSE', nod
 
     return multiscale_loss
 
+def get_multiscale_loss_scaler(diff, data, multiscale_loss_scaler=[5,1,1,1],
+                               only_where_water=True, type_loss='RMSE', nodes_dim=0):
+    """Compute a weighted average of per-scale losses for multiscale models.
+    (Taken verbatim from the published mSWE-GNN repo, training/loss.py)
+
+    Args:
+        diff (Tensor): element-wise difference between predictions and targets
+        data (Data or Batch): graph data object with node_ptr
+        multiscale_loss_scaler (list): per-scale weights
+        only_where_water (bool): if True, restrict loss to wet nodes
+        type_loss (str): loss type, 'RMSE' or 'MAE'
+        nodes_dim (int): dimension along which nodes are arranged
+
+    Returns:
+        Tensor: scalar weighted multiscale loss
+    """
+    assert sum(multiscale_loss_scaler) != 0, "Multiscale loss scalers cannot be all zeros"
+
+    node_ptr = data.node_ptr
+    if only_where_water:
+        where_water = mask_on_water(diff)
+    else:
+        where_water = torch.ones(diff.shape[0]).bool()
+
+    if isinstance(data, Batch):
+        losses_multiscale = torch.stack([get_mean_error(torch.cat([diff[data.node_ptr[i,s]:data.node_ptr[i,s+1]][where_water[node_ptr[i,s]:node_ptr[i,s+1]]]
+                                                  for i in range(data.num_graphs)]), type_loss, nodes_dim)
+                                                  for s in range(node_ptr.shape[-1]-1)])
+    else:
+        losses_multiscale = torch.stack([get_mean_error(diff[node_ptr[i]:node_ptr[i+1]][where_water[node_ptr[i]:node_ptr[i+1]]], type_loss, nodes_dim)
+                                         for i in range(node_ptr.shape[-1]-1)])
+
+    multiscale_loss_scaler = torch.tensor(multiscale_loss_scaler, device=diff.device).float()
+    assert len(multiscale_loss_scaler) == len(losses_multiscale), f"Multiscale loss scalers have wrong dimensions ({len(multiscale_loss_scaler)} != {len(losses_multiscale)})"
+    multiscale_loss = multiscale_loss_scaler@losses_multiscale/sum(multiscale_loss_scaler)
+
+    return multiscale_loss
+
 def loss_function(preds, real, data, BC, type_loss='RMSE', only_where_water=False,
-                  conservation=0, velocity_scaler=1, shallow_weight=1.0, shallow_threshold=0.30):
+                  conservation=0, velocity_scaler=1, shallow_weight=1.0, shallow_threshold=0.30,
+                  multiscale_loss_scaler=None):
     '''
     Calculates loss between predictions and real values
     
@@ -103,6 +142,8 @@ def loss_function(preds, real, data, BC, type_loss='RMSE', only_where_water=Fals
         coefficient for mass conservation loss
     velocity_scaler: float (default = 1)
         scales loss in velocity terms by a factor velocity_scaler
+    multiscale_loss_scaler: list of float or None (default = None)
+        per-scale loss weights, ordered finest to coarsest; None = finest scale only
     '''
     diff = preds - real
 
@@ -117,7 +158,13 @@ def loss_function(preds, real, data, BC, type_loss='RMSE', only_where_water=Fals
         diff[:, 0] = diff[:, 0] * sqrt_w
 
     if 'node_ptr' in data.keys():
-        loss = get_multiscale_loss(diff, data, only_where_water, type_loss, nodes_dim=0)
+        if multiscale_loss_scaler is not None:
+            # published multiscale loss: weighted average over all scales
+            loss = get_multiscale_loss_scaler(diff, data, multiscale_loss_scaler,
+                                              only_where_water, type_loss, nodes_dim=0)
+        else:
+            # previous behaviour: loss on the finest scale only
+            loss = get_multiscale_loss(diff, data, only_where_water, type_loss, nodes_dim=0)
     else:
         if only_where_water:
             where_water = mask_on_water(diff)
