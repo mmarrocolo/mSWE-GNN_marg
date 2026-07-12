@@ -1,0 +1,82 @@
+# Linea 1 — multiscale loss, seed variant (models.seed 666 -> 1), otherwise identical
+# to config_best_sweep_multiscale_loss.yaml. Purpose: repeat the multiscale run to
+# locate the val_loss plateau epoch robustly (3 seeds: 666, 1, 200) before cutting
+# max_epochs/T_max for the K=8 run.
+# Best sweep run - rollout5_hid32_gpu (id: ffphz2b4)
+# K=[1,1,1,5,4,3,2], hid=32, lr=0.000518, rollout=5, batch=4, shallow_weight=5
+
+dataset_parameters:
+  dataset_folder    : 'database/datasets'
+  temporal_res      : 60
+  train_dataset_name: 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart'
+  train_size        : 1
+  val_prcnt         : 0
+  test_dataset_name : 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart'
+  seed              : 0
+
+scalers:
+  DEM_scaler        : 'standard'
+  slope_scaler      : null
+  area_scaler       : 'standard'
+  edge_length_scaler: 'standard'
+  edge_slope_scaler : null
+  WD_scaler         : null
+  V_scaler          : null
+
+selected_node_features:
+  slopes        : False
+  slope         : False
+  area          : True
+  DEM           : True
+
+selected_edge_features:
+  edge_length           : True
+  edge_relative_distance: False
+  edge_slope            : False
+
+temporal_dataset_parameters:
+  rollout_steps : 5
+  previous_t    : 3
+  time_start    : 0
+  time_stop     : -1
+
+models:
+  model_type              : 'MSGNN'
+  hid_features            : 32
+  mlp_layers              : 3
+  seed                    : 1
+  learned_residuals       : True
+  mlp_activation          : 'prelu'
+  gnn_activation          : 'tanh'
+  edge_mlp                : True
+  normalize               : True
+  with_filter_matrix      : True
+  with_gradient           : True
+  with_WL                 : True
+  K                       : [1, 1, 1, 5, 4, 3, 2]
+  learned_pooling         : False
+  skip_connections        : True
+
+trainer_options:
+  type_loss             : 'RMSE'
+  only_where_water      : True
+  batch_size            : 4
+  conservation          : 0
+  velocity_scaler       : 7
+  shallow_weight        : 5
+  shallow_threshold     : 0.30
+  curriculum_epoch      : 15
+  patience              : 300
+  max_epochs            : 1000
+  multiscale_loss_scaler: [5, 1, 1, 1]
+
+lr_info:
+  learning_rate   : 0.0005177909168244793
+  weight_decay    : 0
+  scheduler       : 'cosine'
+  T_max           : 1000
+  eta_min         : 1.0e-6
+  gamma           : 0.7
+  step_size       : 10
+
+saved_model: ''
