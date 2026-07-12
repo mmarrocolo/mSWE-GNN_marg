@@ -70,6 +70,7 @@ echo "Config: $CONFIG"
 echo "Output: $OUTPUT"
 
 srun $PYTHON -u finetune_ahr.py --config $CONFIG --output $OUTPUT \
+    --checkpoint-dir lightning_logs/finetune_ahr/${SLURM_JOB_ID} \
     2>&1 | tee logs/${SLURM_JOB_ID}_finetune.log
 
 echo "End time: $(date)"
