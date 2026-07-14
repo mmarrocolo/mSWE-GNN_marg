@@ -1,17 +1,19 @@
-# "Before the Q-fix" evidence run (plan point 3): identical to config_best_sweep.yaml
-# but trained on the _wdleak dataset, which deliberately restores the old forcing bug
-# (ground-truth WD prescribed at the 7 source cells, type_BC=1, no discharge input).
-# Expected result: hydrograph-sensitivity test gives a flat line at every BC scale
-# factor, including 0 — the model reproduces the GT it can read from the input.
-# Build the dataset first: python run_convert_wdleak.py
+# Linea 2 — multi-simulation training: best-sweep config trained on the 4 scaled
+# hydrograph events (BC x 0.5, 0.75, 1.25, 1.5), with the 1.0x event held out and
+# used as validation (validate_on_test) and test. Changes vs config_best_sweep.yaml:
+#   train_dataset_name : _multisim (4 events; build with build_multisim_dataset.py)
+#   train_size         : 4
+#   batch_size         : 8   (supervisors' request)
+#   validate_on_test   : True (early stopping / checkpoints driven by the 1.0x event)
+# Loss unchanged (plain RMSE on the finest scale, shallow_weight 5).
 
 dataset_parameters:
   dataset_folder    : 'database/datasets'
   temporal_res      : 60
-  train_dataset_name: 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_wdleak'
-  train_size        : 1
+  train_dataset_name: 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_multisim'
+  train_size        : 4
   val_prcnt         : 0
-  test_dataset_name : 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_wdleak'
+  test_dataset_name : 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart'
   seed              : 0
 
 scalers:
@@ -60,7 +62,7 @@ models:
 trainer_options:
   type_loss             : 'RMSE'
   only_where_water      : True
-  batch_size            : 4
+  batch_size            : 8
   conservation          : 0
   velocity_scaler       : 7
   shallow_weight        : 5
@@ -68,6 +70,8 @@ trainer_options:
   curriculum_epoch      : 15
   patience              : 300
   max_epochs            : 1000
+  validate_on_test      : True
+  multiscale_loss_scaler: null   # null = loss on the finest scale only (NO multiscale loss)
 
 lr_info:
   learning_rate   : 0.0005177909168244793

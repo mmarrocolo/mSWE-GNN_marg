@@ -95,7 +95,17 @@ def main():
     )
 
     temporal_train_dataset = to_temporal_dataset(train_dataset, **temporal_dataset_parameters)
-    temporal_val_dataset   = to_temporal_dataset(train_dataset, rollout_steps=-1, **temporal_test_dataset_parameters)
+
+    # code for training with 1 simulation (old behaviour: validation = the training simulation)
+    # temporal_val_dataset = to_temporal_dataset(train_dataset, rollout_steps=-1, **temporal_test_dataset_parameters)
+
+    # code for training with multiple simulations (Linea 2): if trainer_options.validate_on_test
+    # is True, validation runs on the held-out 1.0x event (test dataset) instead of the training sims
+    if config.trainer_options.get('validate_on_test', False):
+        temporal_val_dataset = to_temporal_dataset(test_dataset, rollout_steps=-1, **temporal_test_dataset_parameters)
+        print('Validation on the TEST dataset (held-out event)')
+    else:
+        temporal_val_dataset = to_temporal_dataset(train_dataset, rollout_steps=-1, **temporal_test_dataset_parameters)
 
     print('Number of training simulations:\t', len(train_dataset))
     print('Number of training samples:\t', len(temporal_train_dataset))

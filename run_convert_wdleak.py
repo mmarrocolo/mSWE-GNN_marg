@@ -1,4 +1,4 @@
-"""Build the 'WD-leak' dataset variant — the OLD forcing bug, deliberately restored.
+"""Convert: derive the 'WD-leak' dataset variant — the OLD forcing bug, deliberately restored.
 
 Before the Q-forcing fix, the converter prescribed SFINCS ground-truth water depth
 at the 7 source cells (type_BC=1) instead of the discharge hydrograph (type_BC=2).
@@ -6,7 +6,9 @@ This script recreates that dataset from the current warmstart pkl, for the
 "before the fix" evidence run (plan point 3): train once on this dataset, then the
 hydrograph-sensitivity test should give a flat line (the model never sees Q).
 
-Usage (on hal8 or locally):  python build_wdleak_dataset.py
+Usage (on hal8 or locally):  python run_convert_wdleak.py
+(run_convert_* convention: converts/derives dataset pkls; it does NOT build a template —
+it post-processes the existing warmstart pkl, so the 1.0x dataset must already exist.)
 """
 import os
 import pickle
