@@ -54,14 +54,14 @@ models:
   with_filter_matrix      : True
   with_gradient           : True
   with_WL                 : True
-  K                       : 8
+  K                       : [1,1,1,5,4,3,2]
   learned_pooling         : False
   skip_connections        : True
 
 trainer_options:
   type_loss             : 'RMSE'
   only_where_water      : True
-  batch_size            : 4
+  batch_size            : 8
   conservation          : 0
   velocity_scaler       : 7
   shallow_weight        : 5
