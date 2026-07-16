@@ -1,10 +1,11 @@
-# Linea 1, final step — batch size 8 on the multiscale-loss config with the epoch budget
-# cut to the validation plateau. Identical to config_best_sweep_multiscale_loss.yaml except:
-#   batch_size: 8   (supervisors' request; K stays [1,1,1,5,4,3,2])
-#   max_epochs: 700 (val-loss plateaus of the 3 multiscale seeds: 522 / 614 / 194,
-#                    latest 614 + 150 margin, rounded up; all 3 runs early-stopped <= 815)
-#   T_max: 700      (cosine schedule completes within the budget)
-# Judged on CSI/RMSE against the seed spread (seeds 666, 1, 200, 450, 800).
+# Linea 1 — batch-size-8 rerun, done fairly this time. The first attempt (700 epochs,
+# LR unchanged; results/best_sweep_multiscale_loss_batchsize=8.h5) performed poorly:
+# batch 4->8 halves the gradient steps per epoch (~28 -> ~14 on the 112-window dataset)
+# and the 700-epoch budget removed another 30% -> ~9.8k total updates vs ~28k in the
+# multiscale seed runs, with no LR compensation.
+# This version: batch_size 8, learning_rate DOUBLED (linear scaling rule),
+# max_epochs = T_max = 700. Otherwise identical to config_best_sweep_multiscale_loss.yaml
+# (seed 666, multiscale loss [5,1,1,1], K = [1,1,1,5,4,3,2]).
 # NOTE: this file previously specified K: 8 (8 hops/scale) — that config is preserved in
 # git history and its run is results/best_sweep_multiscale_loss_K8.h5 (Jul 13, 5h).
 
@@ -74,7 +75,7 @@ trainer_options:
   multiscale_loss_scaler: [5, 1, 1, 1]
 
 lr_info:
-  learning_rate   : 0.0005177909168244793
+  learning_rate   : 0.0010355818336489586   # 2x the base LR (linear scaling for batch 4 -> 8)
   weight_decay    : 0
   scheduler       : 'cosine'
   T_max           : 700
