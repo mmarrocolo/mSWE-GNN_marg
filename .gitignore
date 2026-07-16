@@ -19,3 +19,8 @@ wandb
 
 # Keep the oversized subgrid file out of git.
 database/raw_datasets_ahr/Simulations/ahr_river_v03_Marg_additionalsrc_cutpolygon/sfincs_subgrid.nc
+# Model checkpoints: live on hal8, travel by scp - never through git
+# (tracked ones untracked on 2026-07-15; historical versions remain in git history)
+results/**/*.h5
+results/**/*.ckpt
+results/**/*.pt
