@@ -1,10 +1,12 @@
-# Linea 1, final step — K=8 on the multiscale-loss config with the epoch budget cut
-# to the validation plateau. Identical to config_best_sweep_multiscale_loss.yaml except:
-#   K: 8            (int -> 8 hops at every scale on encoder+decoder, vs [1,1,1,5,4,3,2])
-#   max_epochs: 800 (val-loss plateaus of the 3 multiscale seeds: 522 / 614 / 194,
+# Linea 1, final step — batch size 8 on the multiscale-loss config with the epoch budget
+# cut to the validation plateau. Identical to config_best_sweep_multiscale_loss.yaml except:
+#   batch_size: 8   (supervisors' request; K stays [1,1,1,5,4,3,2])
+#   max_epochs: 700 (val-loss plateaus of the 3 multiscale seeds: 522 / 614 / 194,
 #                    latest 614 + 150 margin, rounded up; all 3 runs early-stopped <= 815)
-#   T_max: 800      (cosine schedule completes within the budget)
+#   T_max: 700      (cosine schedule completes within the budget)
 # Judged on CSI/RMSE against the seed spread (seeds 666, 1, 200, 450, 800).
+# NOTE: this file previously specified K: 8 (8 hops/scale) — that config is preserved in
+# git history and its run is results/best_sweep_multiscale_loss_K8.h5 (Jul 13, 5h).
 
 dataset_parameters:
   dataset_folder    : 'database/datasets'
@@ -68,7 +70,7 @@ trainer_options:
   shallow_threshold     : 0.30
   curriculum_epoch      : 15
   patience              : 300
-  max_epochs            : 800
+  max_epochs            : 700
   multiscale_loss_scaler: [5, 1, 1, 1]
 
 lr_info:
