@@ -1,0 +1,84 @@
+# Linea 1 + Linea 2 combined: multi-simulation training (4 scaled events, batch 8,
+# 1.0x held out as validation) WITH the multiscale loss [5,1,1,1] (finest-first).
+# Identical to config_best_sweep_multisim.yaml except multiscale_loss_scaler.
+# Question it answers (point 1 of the week's plan): does supervising the coarse
+# scales reduce the FP fringe of the multisim model?
+# Reference to beat: best_sweep_multisim (bestCSI 0.8205 / RMSE 0.1258 on unseen 1.0x).
+
+dataset_parameters:
+  dataset_folder    : 'database/datasets'
+  temporal_res      : 60
+  train_dataset_name: 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_multisim'
+  train_size        : 4
+  val_prcnt         : 0
+  test_dataset_name : 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart'
+  seed              : 0
+
+scalers:
+  DEM_scaler        : 'standard'
+  slope_scaler      : null
+  area_scaler       : 'standard'
+  edge_length_scaler: 'standard'
+  edge_slope_scaler : null
+  WD_scaler         : null
+  V_scaler          : null
+
+selected_node_features:
+  slopes        : False
+  slope         : False
+  area          : True
+  DEM           : True
+
+selected_edge_features:
+  edge_length           : True
+  edge_relative_distance: False
+  edge_slope            : False
+
+temporal_dataset_parameters:
+  rollout_steps : 5
+  previous_t    : 3
+  time_start    : 0
+  time_stop     : -1
+
+models:
+  model_type              : 'MSGNN'
+  hid_features            : 32
+  mlp_layers              : 3
+  seed                    : 666
+  learned_residuals       : True
+  mlp_activation          : 'prelu'
+  gnn_activation          : 'tanh'
+  edge_mlp                : True
+  normalize               : True
+  with_filter_matrix      : True
+  with_gradient           : True
+  with_WL                 : True
+  K                       : [1, 1, 1, 5, 4, 3, 2]
+  learned_pooling         : False
+  skip_connections        : True
+
+trainer_options:
+  type_loss             : 'RMSE'
+  only_where_water      : True
+  batch_size            : 8
+  conservation          : 0
+  velocity_scaler       : 7
+  shallow_weight        : 5
+  shallow_threshold     : 0.30
+  curriculum_epoch      : 15
+  patience              : 300
+  max_epochs            : 1000
+  validate_on_test      : True
+  multiscale_loss_scaler: [5, 1, 1, 1]
+
+lr_info:
+  learning_rate   : 0.0005177909168244793
+  weight_decay    : 0
+  scheduler       : 'cosine'
+  T_max           : 1000
+  eta_min         : 1.0e-6
+  gamma           : 0.7
+  step_size       : 10
+
+saved_model: ''
+
