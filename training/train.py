@@ -9,13 +9,15 @@ from torch_geometric.data.batch import Batch
 
 from training.loss import loss_function
 from utils.miscellaneous import get_rollout_loss, get_CSI
-from utils.dataset import use_prediction, apply_boundary_condition
+from utils.dataset import use_prediction, apply_boundary_condition, apply_absorbing_outflow
 
 def adapt_batch_training(batch):
     """Corrects batch features for multiscale batches and so that there are also less if/else conditions later on"""
     assert isinstance(batch, Batch), "This function requires a torch_geometric.data.batch.Batch object as input"
     temp = batch.clone()
     temp.node_BC = torch.cat([temp.ptr[i]+temp[i].node_BC for i in range(temp.num_graphs)])
+    if 'node_BC_outflow' in temp.keys():
+        temp.node_BC_outflow = torch.cat([temp.ptr[i]+temp[i].node_BC_outflow for i in range(temp.num_graphs)])
     temp.temporal_res = temp.temporal_res[0]
     temp.type_BC = temp.type_BC[0]
     temp.previous_t = temp.previous_t[0]
@@ -85,9 +87,11 @@ def rollout_test(model, batch):
     predicted_rollout = []
 
     for time_step in range(final_step):
-        temp.x[:,-dynamic_vars:] = apply_boundary_condition(temp.x[:,-dynamic_vars:], 
-                                                            temp.BC[:,:,time_step], 
+        temp.x[:,-dynamic_vars:] = apply_boundary_condition(temp.x[:,-dynamic_vars:],
+                                                            temp.BC[:,:,time_step],
                                                             temp.node_BC, type_BC=temp.type_BC)
+        if 'node_BC_outflow' in temp.keys():
+            temp.x[:,-dynamic_vars:] = apply_absorbing_outflow(temp.x[:,-dynamic_vars:], temp.node_BC_outflow)
         pred = model(temp)
         temp.x = use_prediction(temp.x, pred, model.previous_t)
         predicted_rollout.append(pred)
@@ -120,6 +124,8 @@ def rollout_test_warmstart(model, batch, warmup_steps=0):
             temp.x[:, -dynamic_vars:], temp.BC[:, :, time_step],
             temp.node_BC, type_BC=temp.type_BC
         )
+        if 'node_BC_outflow' in temp.keys():
+            temp.x[:, -dynamic_vars:] = apply_absorbing_outflow(temp.x[:, -dynamic_vars:], temp.node_BC_outflow)
         pred = model(temp)
         predicted_rollout.append(pred)
 
@@ -173,9 +179,12 @@ class LightningTrainer(L.LightningModule):
         self.log("ss_prob", torch.tensor(ss_prob), on_step=False, on_epoch=True)
 
         for i in range(self.rollout_steps):
-            temp.x[:,-self.dynamic_vars:] = apply_boundary_condition(temp.x[:,-self.dynamic_vars:], 
-                                                                temp.BC[:,:,i], temp.node_BC, 
+            temp.x[:,-self.dynamic_vars:] = apply_boundary_condition(temp.x[:,-self.dynamic_vars:],
+                                                                temp.BC[:,:,i], temp.node_BC,
                                                                 type_BC=temp.type_BC)
+            if 'node_BC_outflow' in temp.keys():
+                temp.x[:,-self.dynamic_vars:] = apply_absorbing_outflow(temp.x[:,-self.dynamic_vars:],
+                                                                        temp.node_BC_outflow)
             # Model prediction
             preds = self.model(temp)
 

@@ -1905,8 +1905,12 @@ def _add_ghost_cells_for_bc(mesh, face_BC_arg, edge_index_BC_arg, other_nodes_bc
     mesh.face_y = np.concatenate((mesh.face_y, ghost_face_BC_xy[:, 1]))
     mesh.nodes_per_face = np.concatenate((mesh.nodes_per_face, mesh.nodes_per_face[face_BC_arg]))
 
+    # undirected_BC=True: ghost edges exist in BOTH directions, so interior nodes can
+    # see their ghost neighbour. Required for absorbing outflow (WD=0 clamp at ghosts):
+    # with one-way [interior -> ghost] edges the ghosts receive messages but never
+    # influence the interior, making them inert (verified Jul 2026 ablation).
     dual_edge_index_bc, ghost_cells_ids = get_BC_edge_index(
-        mesh.dual_edge_index, face_BC_arg, undirected_BC=False, outflow=outflow)
+        mesh.dual_edge_index, face_BC_arg, undirected_BC=True, outflow=outflow)
     mesh.dual_edge_index = np.concatenate((mesh.dual_edge_index, dual_edge_index_bc), 1)
 
     ghost_edge_index, ghost_face_nodes = get_ghost_nodes(mesh, face_BC_arg, edge_index_BC_arg)

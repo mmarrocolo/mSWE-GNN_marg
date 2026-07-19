@@ -474,6 +474,8 @@ def to_temporal(data, previous_t=2, time_start=0, time_stop=-1, rollout_steps=1)
         temp.previous_t = previous_t
         temp.node_BC = data.node_BC
         temp.type_BC = data.type_BC
+        if 'node_BC_outflow' in data.keys():
+            temp.node_BC_outflow = data.node_BC_outflow
         
         if 'mesh' in data.keys() and isinstance(data.mesh, MultiscaleMesh):
             temp.node_ptr = data.node_ptr
@@ -509,6 +511,17 @@ def apply_boundary_condition(x_d, BC, node_BC, type_BC=2):
     
     x_d[node_BC, (type_BC-1)::NUM_WATER_VARS] = BC
 
+    return x_d
+
+def apply_absorbing_outflow(x_d, node_BC_outflow):
+    '''
+    Absorbing outflow boundary: clamp WD = 0 at the outflow ghost cells every step.
+    Combined with bidirectional ghost edges, the interior boundary cells permanently
+    see a dry neighbour -> water-level gradient -> learned dynamics push water out;
+    the clamp discards that water each step (domain outflow).
+    x_d: dynamic part of the node features (shape [num_nodes, previous_t*NUM_WATER_VARS])
+    '''
+    x_d[node_BC_outflow, 0::NUM_WATER_VARS] = 0
     return x_d
 
 def check_type_BC(type_BC, num_water_vars):
