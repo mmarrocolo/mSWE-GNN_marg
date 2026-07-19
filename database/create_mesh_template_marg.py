@@ -402,6 +402,16 @@ def create_mesh_template_pkl(
         data.node_BC = data.node_BC[-n_bc_finest:]
         data.edge_BC_length = data.edge_BC_length[-n_bc_finest:]
 
+    # Outflow ghost cells: in this SFINCS model ALL ghost cells are outflow (mirrored
+    # across the msk==3 boundary) — there is no msk==2 inflow boundary (inflow comes
+    # from the .src point sources, handled by the converter). Keep the FINEST-scale
+    # ghosts with global indices: the finest mesh is first in the stack (offset 0),
+    # so its local ghost ids are already global.
+    finest_gc = mesh.meshes[0] if with_multiscale else mesh
+    n_out_finest = len(finest_gc.ghost_cells_ids)
+    data.node_BC_outflow = torch.IntTensor(np.asarray(mesh.ghost_cells_ids[:n_out_finest]))
+    print(f"   node_BC_outflow (finest-scale outflow ghost cells): {len(data.node_BC_outflow)}")
+
     # Option B: inflow / outflow split — uncomment to enable:
     # finest = mesh.meshes[0] if with_multiscale else mesh
     # if hasattr(finest, 'ghost_cells_ids_inflow'):
@@ -611,6 +621,16 @@ def create_mesh_template_from_pol(polygon_path, xyz_path, output_pkl_path,
         n_bc_finest = len(finest_mesh_for_bc.ghost_cells_ids)
         data.node_BC = data.node_BC[-n_bc_finest:]
         data.edge_BC_length = data.edge_BC_length[-n_bc_finest:]
+
+    # Outflow ghost cells: in this SFINCS model ALL ghost cells are outflow (mirrored
+    # across the msk==3 boundary) — there is no msk==2 inflow boundary (inflow comes
+    # from the .src point sources, handled by the converter). Keep the FINEST-scale
+    # ghosts with global indices: the finest mesh is first in the stack (offset 0),
+    # so its local ghost ids are already global.
+    finest_gc = mesh.meshes[0] if with_multiscale else mesh
+    n_out_finest = len(finest_gc.ghost_cells_ids)
+    data.node_BC_outflow = torch.IntTensor(np.asarray(mesh.ghost_cells_ids[:n_out_finest]))
+    print(f"   node_BC_outflow (finest-scale outflow ghost cells): {len(data.node_BC_outflow)}")
 
     # Option B: inflow / outflow split — uncomment to enable:
     # finest = mesh.meshes[0] if with_multiscale else mesh

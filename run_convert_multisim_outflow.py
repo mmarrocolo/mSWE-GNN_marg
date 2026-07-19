@@ -1,17 +1,19 @@
 """Convert the warmstart simulations (1.0x + the 4 scaled hydrographs) onto the
-inflow/outflow ghost-cell template, for the absorbing-outflow experiment.
+OUTFLOW ghost-cell template, for the absorbing-outflow experiment.
+(No inflow ghost cells exist — the model has no msk==2 boundary; inflow is the
+discharge at the 7 .src points — hence the plain "outflow" naming.)
 
-PREREQUISITE — rebuild the gc template FIRST (the absorbing outflow needs the
-bidirectional ghost edges introduced in database/graph_creation.py, Jul 2026):
+PREREQUISITE — build the outflow template FIRST (bidirectional ghost edges,
+database/graph_creation.py fix, Jul 2026):
 
-    python build_template_inflow_outflow_gc.py
+    python build_template_outflow_gc.py
 
-Then:  python run_convert_multisim_gc.py
+Then:  python run_convert_multisim_outflow.py
 
 Outputs (train/ and test/ for per-sim, train/ for the merged):
-  ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_inflow_outflow_gc          (1.0x, val/test)
-  ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_{q050,q075,q125,q150}_gc   (per factor)
-  ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_inflow_outflow_gc_multisim (4 events, train)
+  ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_outflow_gc                  (1.0x, val/test)
+  ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_{q050,q075,q125,q150}_outflow_gc  (per factor)
+  ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_outflow_gc_multisim         (4 events, train)
 
 Same conversion logic as run_convert_warmstart_inflow_outflow_gc.py, looped.
 Every dataset carries node_BC_outflow -> training/rollout apply the absorbing
@@ -35,22 +37,22 @@ from database.convert_sfincs_to_pkl_marg import (
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 SIM_ROOT     = os.path.join(PROJECT_ROOT, 'database', 'raw_datasets_ahr', 'Simulations')
 TEMPLATE_PKL = os.path.join(PROJECT_ROOT, 'database', 'datasets', 'train',
-                            'template_100m_inflow_outflow_gc.pkl')
+                            'template_100m_outflow_gc.pkl')
 OUT_ROOT     = os.path.join(PROJECT_ROOT, 'database', 'datasets')
 
 BASE_FOLDER = 'ahr_river_v03_Marg_additionalsrc_velocity_100m_cutpolygon_warmstart'
 # tag -> (sim folder, output dataset name)
 SIMS = {
-    '1x':   (BASE_FOLDER,           'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_inflow_outflow_gc'),
-    'q050': (BASE_FOLDER + '_q050', 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_q050_gc'),
-    'q075': (BASE_FOLDER + '_q075', 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_q075_gc'),
-    'q125': (BASE_FOLDER + '_q125', 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_q125_gc'),
-    'q150': (BASE_FOLDER + '_q150', 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_q150_gc'),
+    '1x':   (BASE_FOLDER,           'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_outflow_gc'),
+    'q050': (BASE_FOLDER + '_q050', 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_q050_outflow_gc'),
+    'q075': (BASE_FOLDER + '_q075', 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_q075_outflow_gc'),
+    'q125': (BASE_FOLDER + '_q125', 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_q125_outflow_gc'),
+    'q150': (BASE_FOLDER + '_q150', 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_q150_outflow_gc'),
 }
-MERGED_NAME = 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_inflow_outflow_gc_multisim'
+MERGED_NAME = 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_outflow_gc_multisim'
 
 assert os.path.exists(TEMPLATE_PKL), \
-    f'Template not found: {TEMPLATE_PKL} — run build_template_inflow_outflow_gc.py first'
+    f'Template not found: {TEMPLATE_PKL} — run build_template_outflow_gc.py first'
 
 print('Loading gc template...')
 template_data = load_single_data_object(TEMPLATE_PKL)
@@ -175,4 +177,4 @@ with open(out_path, 'wb') as f:
     pickle.dump(merged, f)
 print(f'\nSaved {len(merged)} events -> {out_path}')
 print('Sanity: Q-peak ratios must read ~0.5 / 0.75 / 1.25 / 1.5.')
-print('Train with config_best_sweep_multisim_msloss_gc.yaml.')
+print('Train with config_best_sweep_multisim_msloss_outflow.yaml.')

@@ -9,10 +9,10 @@
 
 dataset_parameters:
   dataset_folder    : 'database/datasets'
-  train_dataset_name: 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_inflow_outflow_gc_multisim'
+  train_dataset_name: 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_outflow_gc_multisim'
   train_size        : 4
   val_prcnt         : 0
-  test_dataset_name : 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_inflow_outflow_gc'
+  test_dataset_name : 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart_outflow_gc'
   temporal_res      : 60
   seed              : 0
 
