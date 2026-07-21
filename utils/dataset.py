@@ -273,7 +273,10 @@ def create_data_attr(datasets, scalers=None, temporal_res=60,
             temp.type_BC = data.type_BC
             temp.edge_BC_length = data.edge_BC_length.to(device)
             temp.BC = temp.BC.to(device)/temp.edge_BC_length.reshape(-1, 1)
-        
+
+        if 'node_BC_outflow' in data.keys():
+            temp.node_BC_outflow = data.node_BC_outflow.to(device)
+
         if 'mesh' in data.keys():
             temp.mesh = data.mesh
             if isinstance(temp.mesh, MultiscaleMesh):
