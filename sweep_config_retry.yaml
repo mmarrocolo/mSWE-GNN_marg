@@ -1,0 +1,33 @@
+# Retry sweep for the 3 K presets that crashed in sweep a97bvnpt with
+# "RuntimeError: No CUDA GPUs are available" at dataset-loading time (0-2s runtime,
+# unrelated to K — hal8 node p-lcfgpu001 oversubscribed when 6 jobs landed at once).
+# Same project as the original sweep so all 9 runs (6 + 3 retries) sit together in
+# the W&B project's run table; a plain grid sweep can't retry combos it already
+# dispatched (confirmed: a fresh agent against a97bvnpt gets an immediate "exit"),
+# so this is a second, smaller sweep rather than a resume of the first.
+#
+# Run on your LOCAL machine to initialise:
+#   wandb sweep sweep_config_retry.yaml
+# Then submit 3 jobs on hal8 using run_sweep_hal8.sh — check node availability first
+# (scontrol show node p-lcfgpu001 / nvidia-smi) to avoid the same oversubscription.
+
+project: mswe-gnn-ahr-K-calib-3scales
+program: finetune_ahr.py
+command:
+  - ${env}
+  - python
+  - ${program}
+  - --config
+  - config_best_sweep_multisim_multiscale_3scales.yaml
+
+method: grid
+metric:
+  name: val_loss
+  goal: minimize
+
+parameters:
+  K:
+    values:
+      - [1, 1, 9, 3, 2]
+      - [1, 1, 7, 4, 3]
+      - [1, 1, 9, 4, 3]

@@ -1,81 +1,40 @@
-# W&B sweep config for mSWE-GNN hyperparameter search on Ahr 100m dataset.
+# W&B sweep config: calibrate K (Chebyshev/TAG hop count per scale) on the
+# 3-scale multisim + multiscale-loss model, to test whether a bigger receptive
+# field at the bottleneck (and/or decoder) fixes the flood-front lag seen in
+# visualize_finetuned_fixed_gt_multisim_multiloss_3scales.ipynb.
+#
 # Run on your LOCAL machine to initialise:
 #   wandb sweep sweep_config.yaml
 # Then submit jobs on hal8 using run_sweep_hal8.sh.
 #
 # Dotted keys are reconstructed into nested dicts by fix_dict_in_config() in finetune_ahr.py.
+# Everything not swept below is inherited from the --config base file.
 
-project: mswe-gnn-ahr-sweep
+project: mswe-gnn-ahr-K-calib-3scales
 program: finetune_ahr.py
 command:
   - ${env}
   - python
   - ${program}
   - --config
-  - config_finetune_100m_velocity.yaml
+  - config_best_sweep_multisim_multiscale_3scales.yaml
   # no ${args}: sweep values are injected via wandb.config, not CLI flags
 
-method: bayes
+# Grid, not bayes: this is a calibration comparison (like the seed table), not
+# a search for the single best config, so we want every preset run to completion.
+method: grid
 metric:
   name: val_loss
   goal: minimize
-  # Alternative: optimise directly for CSI
-  # name: val_CSI_005
-  # goal: maximize
-
-early_terminate:
-  type: hyperband
-  min_iter: 30       # don't kill runs before epoch 30
-  # max_iter: 500      # matches trainer_options.max_epochs !!!
-  # s: 2               # halving every time (factor of 2) !!!
 
 parameters:
-  # --- architecture ---
-  # 96 is the upper limit before memory gets tight with large batch/rollout combos
-  models.hid_features:
-    values: [32, 64]
-
-  # K as top-level key so W&B doesn't need to reconstruct a nested dict.
-  # Each preset is [encoder path only]: model mirrors it to build the full U-net K.
+  # K is [enc 100m, enc 500m, bottleneck 1000m, dec 500m, dec 100m].
+  # Baseline (current best_sweep_multisim_multiscale_3scales) is [1,1,5,3,2].
   K:
     values:
-      - [1, 1, 1, 3, 3, 2, 1]
-      - [1, 1, 1, 5, 4, 3, 2] 
-      - [1, 2, 2, 7, 5, 4, 3]
-
-  # --- training dynamics ---
-  temporal_dataset_parameters.rollout_steps:
-    values: [2, 3, 4, 5]
-  
-    # distribution: int_uniform
-    # min: 2
-    # max: 5
-
-  trainer_options.batch_size:
-    values: [2, 4, 6, 8]
-    
-
-  lr_info.learning_rate:
-    distribution: log_uniform_values
-    min: 0.0005
-    max: 0.003
-
-  # --- loss weighting ---
-  trainer_options.shallow_weight:
-    values: [1, 2, 3, 5, 10]   # 1 = no upweighting (baseline); >1 upweights shallow wet cells
-
-  # --- fixed values (pinned here so they appear in every run's W&B config) ---
-  trainer_options.shallow_threshold:
-    value: 0.30                 # upweight cells with 0 < WD <= 0.30 m
-  saved_model:
-    value: ''             # always train from scratch in the sweep
-  temporal_dataset_parameters.previous_t:
-    value: 3
-  trainer_options.max_epochs:
-    value: 1000
-  trainer_options.patience:
-    value: 300         # reduced from 300 so bad runs don't drag on
-  trainer_options.conservation:
-    value: 0
-  trainer_options.curriculum_epoch:
-    value: 15
+      - [1, 1, 3, 3, 2]   
+      - [1, 1, 5, 3, 2]   
+      - [1, 1, 7, 3, 2]   
+      - [1, 1, 9, 3, 2]   
+      - [1, 1, 7, 4, 3]   
+      - [1, 1, 9, 4, 3]
