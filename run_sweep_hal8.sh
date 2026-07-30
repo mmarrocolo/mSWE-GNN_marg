@@ -4,7 +4,6 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:1
-#SBATCH --nodelist=p-lcfgpu002
 #SBATCH --mem-per-cpu=7500M
 #SBATCH --time=24:00:00
 #SBATCH --output=/p/11210554-dtc-hydrology-next/marrocol/mSWE-GNN_marg/logs/%j_sweep.out
