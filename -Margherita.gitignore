@@ -1,0 +1,21 @@
+*.ist
+*.pkl
+*.xyz
+*.txt
+*.pol
+*.nc
+!database/raw_datasets_ahr/Simulations/ahr_river_v03_Marg_additionalsrc_cutpolygon/sfincs_map.nc
+!database/raw_datasets_ahr/Simulations/ahr_river_v03_Marg_additionalsrc_cutpolygon/sfincs_his.nc
+!database/raw_datasets_ahr/Simulations/ahr_river_v03_Marg_additionalsrc_velocity_100m_cutpolygon/sfincs_map.nc
+!database/raw_datasets_ahr/Simulations/ahr_river_v03_Marg_additionalsrc_velocity_100m_cutpolygon/gis/dep.tif
+__pycache__
+*.pyc
+lightning_logs
+wandb
+
+# Large GIS and visualization files (exceed GitHub 100MB limit)
+*.tif
+*.gif
+
+# Keep the oversized subgrid file out of git.
+database/raw_datasets_ahr/Simulations/ahr_river_v03_Marg_additionalsrc_cutpolygon/sfincs_subgrid.nc
