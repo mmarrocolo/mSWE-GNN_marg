@@ -18,6 +18,16 @@ import argparse
 import copy
 import os
 import pickle
+import sys
+
+# Templates carry Mesh/MultiscaleMesh objects pickled under database.graph_creation
+# (see create_mesh_template_marg.py). When this script is run directly
+# (`python database/convert_sfincs_to_pkl_marg.py ...`), Python only puts this
+# script's own directory on sys.path, not the repo root - without the repo root here
+# too, `import database` fails while unpickling the template.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
 
 import numpy as np
 import torch
@@ -233,6 +243,13 @@ def main():
     parser.add_argument("--vy-var", default=None, help="Optional velocity-y variable name")
     parser.add_argument("--src-file", default=None, help="SFINCS source file (sfincs.src) with 7 source point locations")
     parser.add_argument("--dis-file", default=None, help="SFINCS discharge file (sfincs.dis) with time series")
+    parser.add_argument("--only-var", choices=["WD", "VX", "VY"], default=None,
+                         help="Compute only this variable's interpolation (the other two are filled with "
+                              "zeros). Lets a caller split WD/VX/VY across separate process invocations - "
+                              "running all three back-to-back in one process (~360 griddata/Qhull calls) "
+                              "crashes unpredictably on some machines; a lone ~121-call run of just one "
+                              "variable does not (see project_local_gpu_no_cuda memory). Orchestrated by "
+                              "run_convert_structures.py, not needed for a normal single-process run.")
     args = parser.parse_args()
 
     if not os.path.exists(args.sfincs_map):
@@ -278,15 +295,19 @@ def main():
     zs_filled = np.where(np.isnan(zs), zb[None, :, :], zs)
     WD_grid = np.maximum(zs_filled - zb[None, :, :], 0.0).astype(np.float32)
 
-    print("Interpolating WD to mesh...")
-    WD = interpolate_time_series(source_points, WD_grid, target_points, "WD")
+    if args.only_var in (None, "WD"):
+        print("Interpolating WD to mesh...")
+        WD = interpolate_time_series(source_points, WD_grid, target_points, "WD")
+    else:
+        print(f"--only-var={args.only_var}: skipping WD, filling with zeros.")
+        WD = np.zeros((target_points.shape[0], WD_grid.shape[0]), dtype=np.float32)
 
     # Velocities are optional in this SFINCS output. Use zeros if missing.
     # Open a second handle without xarray fill-value masking to avoid memory
     # allocation errors when SFINCS velocity vars have integer fill values.
     ds_raw = xr.open_dataset(args.sfincs_map, decode_times=False, mask_and_scale=False)
 
-    if args.vx_var is not None and args.vx_var in ds.data_vars:
+    if args.vx_var is not None and args.vx_var in ds.data_vars and args.only_var in (None, "VX"):
         print(f"Interpolating velocity X from '{args.vx_var}'...")
         VX_raw = ds_raw[args.vx_var].values.astype(np.float32)
         # Replace SFINCS fill values (typically large integers or -9999) with NaN
@@ -297,9 +318,12 @@ def main():
         VX = interpolate_time_series(source_points, VX_grid, target_points, "VX")
     else:
         VX = np.zeros_like(WD, dtype=np.float32)
-        print("Velocity X not provided; using zeros.")
+        if args.only_var not in (None, "VX"):
+            print(f"--only-var={args.only_var}: skipping VX, filling with zeros.")
+        else:
+            print("Velocity X not provided; using zeros.")
 
-    if args.vy_var is not None and args.vy_var in ds.data_vars:
+    if args.vy_var is not None and args.vy_var in ds.data_vars and args.only_var in (None, "VY"):
         print(f"Interpolating velocity Y from '{args.vy_var}'...")
         VY_raw = ds_raw[args.vy_var].values.astype(np.float32)
         fill_val = ds_raw[args.vy_var].attrs.get("_FillValue", None)
@@ -309,7 +333,10 @@ def main():
         VY = interpolate_time_series(source_points, VY_grid, target_points, "VY")
     else:
         VY = np.zeros_like(WD, dtype=np.float32)
-        print("Velocity Y not provided; using zeros.")
+        if args.only_var not in (None, "VY"):
+            print(f"--only-var={args.only_var}: skipping VY, filling with zeros.")
+        else:
+            print("Velocity Y not provided; using zeros.")
 
     ds_raw.close()
 

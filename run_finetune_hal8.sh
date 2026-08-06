@@ -61,15 +61,26 @@ fi
 
 # --- run fine-tuning ---
 # Override via env vars when submitting: MSWE_CONFIG=... MSWE_OUTPUT=... sbatch run_finetune_hal8.sh
+# To resume a run that hit the time limit: also pass MSWE_RESUME=<path to last.ckpt> and
+# MSWE_CHECKPOINT_DIR=<the original run's checkpoint dir> so new checkpoints keep accumulating
+# in the same place instead of starting a fresh lightning_logs/finetune_ahr/<new job id>/.
 # CONFIG=${MSWE_CONFIG:-config_finetune_100m_velocity.yaml}
 # OUTPUT=${MSWE_OUTPUT:-results/finetuned_ahr.h5}
 CONFIG=${MSWE_CONFIG:-config_best_sweep_3scales.yaml}
 OUTPUT=${MSWE_OUTPUT:-results/best_sweep_3scales.h5}
+CHECKPOINT_DIR=${MSWE_CHECKPOINT_DIR:-lightning_logs/finetune_ahr/${SLURM_JOB_ID}}
 echo "Config: $CONFIG"
 echo "Output: $OUTPUT"
+echo "Checkpoint dir: $CHECKPOINT_DIR"
+
+RESUME_ARGS=()
+if [ -n "$MSWE_RESUME" ]; then
+    echo "Resuming from: $MSWE_RESUME"
+    RESUME_ARGS=(--resume "$MSWE_RESUME")
+fi
 
 srun $PYTHON -u finetune_ahr.py --config $CONFIG --output $OUTPUT \
-    --checkpoint-dir lightning_logs/finetune_ahr/${SLURM_JOB_ID} \
+    --checkpoint-dir "$CHECKPOINT_DIR" "${RESUME_ARGS[@]}" \
     2>&1 | tee logs/${SLURM_JOB_ID}_finetune.log
 
 echo "End time: $(date)"
