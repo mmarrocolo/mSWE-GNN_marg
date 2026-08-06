@@ -618,7 +618,30 @@ def create_gmesh(polygons_file, with_interior_lines=True, max_distance=None, bor
 
         if with_interior_lines:
             split_curves = []
-            for geom_shape in gdf.geometry:
+            # Row 0 is always the outer boundary polygon (the same geometry `surface`
+            # was built from). Re-embedding its own ring as a split curve feeds OCC a
+            # curve exactly coincident with the surface boundary, which crashes
+            # boolean_fragments natively. Only embed genuinely interior geometries.
+            for geom_shape in gdf.geometry.iloc[1:]:
+                # A densely-digitized line (e.g. one vertex every ~30m) embedded at full
+                # detail forces the mesher to place elements at that spacing along the
+                # whole line, regardless of the coarse target size - causing severe
+                # over-fragmentation. Simplify to match this scale's resolution first.
+                if border_resample_distance is not None:
+                    geom_shape = geom_shape.simplify(border_resample_distance / 2, preserve_topology=True)
+                # LineString: embed as an open constraint (no interior to mesh around -
+                # avoids forcing tiny elements between two near-parallel rings, unlike a
+                # thin buffered polygon). Polygon: embed its ring, as before.
+                if geom_shape.geom_type in ('LineString', 'MultiLineString'):
+                    lines = geom_shape.geoms if geom_shape.geom_type == 'MultiLineString' else [geom_shape]
+                    for line in lines:
+                        coords = list(line.coords)
+                        if len(coords) < 2:
+                            continue
+                        pts = [geom.add_point(p) for p in coords]
+                        for i in range(len(pts) - 1):
+                            split_curves.append(geom.add_line(pts[i], pts[i + 1]))
+                    continue
                 coords = list(geom_shape.exterior.coords)
                 if len(coords) < 2:
                     continue
@@ -1906,9 +1929,7 @@ def _add_ghost_cells_for_bc(mesh, face_BC_arg, edge_index_BC_arg, other_nodes_bc
     mesh.nodes_per_face = np.concatenate((mesh.nodes_per_face, mesh.nodes_per_face[face_BC_arg]))
 
     # undirected_BC=True: ghost edges exist in BOTH directions, so interior nodes can
-    # see their ghost neighbour. Required for absorbing outflow (WD=0 clamp at ghosts):
-    # with one-way [interior -> ghost] edges the ghosts receive messages but never
-    # influence the interior, making them inert (verified Jul 2026 ablation).
+    # see their ghost neighbour.
     dual_edge_index_bc, ghost_cells_ids = get_BC_edge_index(
         mesh.dual_edge_index, face_BC_arg, undirected_BC=True, outflow=outflow)
     mesh.dual_edge_index = np.concatenate((mesh.dual_edge_index, dual_edge_index_bc), 1)

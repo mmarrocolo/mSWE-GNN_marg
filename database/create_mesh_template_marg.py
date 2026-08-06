@@ -19,26 +19,22 @@ import os
 import sys
 import argparse
 import numpy as np
-import torch
-from torch_geometric.data import Data
+# torch / torch_geometric are imported lazily, inside each function, right before
+# the torch_geometric.data.Data object is assembled - NOT at module level. The
+# coarse-mesh-building steps that run earlier spawn gmsh subprocesses, and doing
+# that from a process that already has torch loaded crashes unpredictably on this
+# machine (see _make_coarse_meshes below). Importing torch only after mesh
+# building is done keeps it out of the process during those subprocess calls.
 import pickle
 from pathlib import Path
 from copy import copy
 
 from copy import copy as _copy
 
-from graph_creation import (
-    create_gmesh,
-    create_simple_grid_mesh,
-    Mesh,
-    MultiscaleMesh,
-    find_face_BC,
-    interpolate_BC_location_multiscale,
-    pool_multiscale_attributes,
-    update_ghost_cells_attributes,
-    add_ghost_cells_mesh,
-    add_ghost_cells_attributes
-)
+# graph_creation (and, transitively, torch) is imported lazily inside each
+# function below, not at module level - see the comment in create_mesh_template_pkl
+# for why (gmsh subprocess spawning is unreliable once torch is loaded in this
+# process on this machine).
 
 
 def tif_to_xyz(dem_tif_path, output_xyz_path=None):
@@ -124,8 +120,38 @@ def shapefile_to_polygon_in_dem_crs(shapefile_path, dem_tif_path):
 
     transformer = Transformer.from_crs(src_crs, dem_crs, always_xy=True)
     geom = shp_transform(transformer.transform, geom)
-    
+
     return geom
+
+
+def _read_all_geometries(vector_path):
+    """Read every feature's geometry from a vector file, assumed already in the DEM's CRS.
+
+    Uses fiona rather than geopandas.read_file: on this machine, geopandas crashes
+    with a pyproj CRSError when parsing embedded CRS metadata (see
+    shapefile_to_polygon_in_dem_crs). No reprojection here - the structures file is
+    expected to already be in the DEM CRS (set the QGIS project CRS accordingly
+    before exporting).
+    """
+    import fiona
+    from shapely.geometry import shape as geom_shape
+
+    if not os.path.exists(vector_path):
+        raise FileNotFoundError(f"Structures file not found: {vector_path}")
+
+    with fiona.open(vector_path, 'r') as src:
+        geoms = [geom_shape(feat['geometry']) for feat in src]
+
+    # create_gmesh's interior-lines embedding reads geom.exterior.coords, which only
+    # exists on Polygon - explode any MultiPolygon (e.g. from a QGIS merge that
+    # promoted geometry type) into its constituent Polygons.
+    flat_geoms = []
+    for g in geoms:
+        if g.geom_type == 'MultiPolygon':
+            flat_geoms.extend(list(g.geoms))
+        else:
+            flat_geoms.append(g)
+    return flat_geoms
 
 
 def create_mesh_template_pkl(
@@ -139,6 +165,7 @@ def create_mesh_template_pkl(
     n_timesteps=10,
     sfincs_map_nc=None,
     outflow_ghost_cells=False,
+    structures_gpkg_path=None,
 ):
     """
     Create a mesh template pickle file from shapefile + DEM.
@@ -157,6 +184,11 @@ def create_mesh_template_pkl(
         sfincs_map_nc: Optional path to a SFINCS sfincs_map.nc file. When provided the
             SFINCS structured grid is used as the finest mesh level and only
             number_of_multiscales-1 coarser gmsh meshes are created.
+        structures_gpkg_path: Optional path to a polygon file (e.g. buffered weir/thin-dam
+            lines) to embed as constrained edges in the coarse gmsh meshes, so pooling
+            never merges cells across a structure. Only affects the coarse (gmsh) scales -
+            the finest scale, when sfincs_map_nc is given, already has structures baked
+            into its real grid topology and needs no such treatment.
     """
     
     print(f"\n=== Creating Mesh Template ===")
@@ -193,7 +225,14 @@ def create_mesh_template_pkl(
     import geopandas as gpd
     temp_dir = os.path.dirname(os.path.abspath(output_pkl_path))
     polygon_file = os.path.join(temp_dir, 'temp_boundary.gpkg')
-    gpd.GeoDataFrame(geometry=[geom]).to_file(polygon_file, driver='GPKG')
+
+    polygon_geoms = [geom]
+    if structures_gpkg_path is not None:
+        structure_geoms = _read_all_geometries(structures_gpkg_path)
+        print(f"   Embedding {len(structure_geoms)} structure polygon(s) as mesh constraints")
+        polygon_geoms += structure_geoms
+
+    gpd.GeoDataFrame(geometry=polygon_geoms).to_file(polygon_file, driver='GPKG')
     
     # Step 3: Convert DEM .tif to .xyz (or use existing .xyz)
     print("\n3. Processing DEM...")
@@ -238,18 +277,84 @@ def create_mesh_template_pkl(
         mesh_resolutions_used = list(mesh_resolutions)[:n_scales]
     print(f"   Mesh resolutions (m): {mesh_resolutions_used}")
 
-    def _make_coarse_mesh(d):
-        try:
-            return create_gmesh(polygon_file, with_interior_lines=False,
-                                max_distance=d, border_resample_distance=d)
-        except ImportError as _e:
-            if 'gmsh' in str(_e).lower() or 'pygmsh' in str(_e).lower():
-                print(f"   gmsh not available ({_e}); using simple grid at {d:.0f} m spacing")
-                return create_simple_grid_mesh(
-                    _bounds[0], _bounds[2], _bounds[1], _bounds[3], spacing=d)
-            raise
+    def _make_coarse_meshes(resolutions):
+        # gmsh/OCC crashes unpredictably (different call, different stage each time)
+        # whenever it shares a process with torch on this machine - confirmed while
+        # debugging the structures template on 2026-08-05: a bare create_gmesh() call
+        # is reliable alone, but this module imports torch at the top, so by the time
+        # create_mesh_template_pkl runs, torch is already loaded in this process.
+        # Build every coarse mesh in a single *torch-free* subprocess instead - that
+        # process never imports torch/torch_geometric at all, only graph_creation.
+        # A few retries because even torch-free, gmsh/OCC showed occasional flakiness.
+        import subprocess, tempfile
+        # Import via the database.graph_creation package (not bare graph_creation) so
+        # the Mesh/MultiscaleMesh objects this produces have the same class identity
+        # everything else in the codebase expects (utils/dataset.py does
+        # `from database.graph_creation import MultiscaleMesh` and relies on
+        # isinstance() checks against it; a bare-imported class of the same name is a
+        # *different* class as far as Python and pickle are concerned). Safe to import
+        # torch here even though it's the very thing we're avoiding in the parent -
+        # this worker process doesn't spawn any further children itself, it just
+        # builds the meshes and exits; the crash only happens when a process that is
+        # about to spawn a *child* already has torch loaded.
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        interior = structures_gpkg_path is not None
+        last_err = None
+        for attempt in range(3):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                out_pkl = os.path.join(tmpdir, 'meshes.pkl')
+                worker = f"""
+import sys, pickle
+sys.path.insert(0, {repo_root!r})
+try:
+    from database.graph_creation import create_gmesh, create_simple_grid_mesh
+except ImportError:
+    print("__IMPORT_ERROR__")
+    sys.exit(0)
+meshes = []
+for d in {list(resolutions)!r}:
+    meshes.append(create_gmesh({polygon_file!r}, with_interior_lines={interior!r},
+                                max_distance=d, border_resample_distance=d))
+with open({out_pkl!r}, 'wb') as f:
+    pickle.dump(meshes, f)
+"""
+                result = subprocess.run([sys.executable, '-c', worker], capture_output=True, text=True)
+                if '__IMPORT_ERROR__' in result.stdout:
+                    print(f"   gmsh not available; using simple grid meshes")
+                    if repo_root not in sys.path:
+                        sys.path.insert(0, repo_root)
+                    from database.graph_creation import create_simple_grid_mesh
+                    return [create_simple_grid_mesh(_bounds[0], _bounds[2], _bounds[1], _bounds[3], spacing=d)
+                            for d in resolutions]
+                if result.returncode == 0 and os.path.exists(out_pkl):
+                    with open(out_pkl, 'rb') as f:
+                        return pickle.load(f)
+                last_err = (result.returncode, result.stderr[-4000:])
+                print(f"   coarse mesh subprocess crashed (attempt {attempt + 1}/3, exit {result.returncode}); retrying...")
+        raise RuntimeError(f"create_gmesh subprocess failed after 3 attempts (exit {last_err[0]}):\n{last_err[1]}")
 
-    mesh_list = [_make_coarse_mesh(d) for d in mesh_resolutions_used]
+    mesh_list = _make_coarse_meshes(mesh_resolutions_used)
+
+    # Only import graph_creation (and, transitively, torch) now that the
+    # torch-free subprocess calls above are done - see _make_coarse_meshes. Via the
+    # database.graph_creation package (not bare graph_creation) so these classes have
+    # the same identity as the Mesh/MultiscaleMesh objects _make_coarse_meshes just
+    # returned (also imported via database.graph_creation in its worker) and as what
+    # the rest of the codebase (e.g. utils/dataset.py) expects.
+    _repo_root = os.path.dirname(os.path.abspath(__file__)) + os.sep + '..'
+    _repo_root = os.path.normpath(_repo_root)
+    if _repo_root not in sys.path:
+        sys.path.insert(0, _repo_root)
+    from database.graph_creation import (
+        Mesh,
+        MultiscaleMesh,
+        find_face_BC,
+        interpolate_BC_location_multiscale,
+        pool_multiscale_attributes,
+        update_ghost_cells_attributes,
+        add_ghost_cells_mesh,
+        add_ghost_cells_attributes,
+    )
 
     if sfincs_map_nc:
         if not os.path.exists(sfincs_map_nc):
@@ -304,13 +409,14 @@ def create_mesh_template_pkl(
     if with_multiscale:
         if sfincs_map_nc:
             # SFINCS mesh BC is already set by _import_from_sfincs_map; only propagate to gmsh meshes.
+            # Seed the search from the REAL known outflow location (msk==3), not a geometric guess.
             gmsh_finest = mesh_list[-2]
             bnd_mids = gmsh_finest.node_xy[gmsh_finest.boundary_edges].mean(1)
             valid = np.isfinite(bnd_mids).all(axis=1)
             bnd_mids = bnd_mids[valid]
-            centroid = gmsh_finest.face_xy.mean(0)
-            dists = np.linalg.norm(bnd_mids - centroid, axis=1)
-            best = int(dists.argmax())
+            real_bc_xy = finest_mesh.face_xy[finest_mesh.face_BC].mean(0, keepdims=True)
+            dists = np.linalg.norm(bnd_mids - real_bc_xy, axis=1)
+            best = int(dists.argmin())
             edge_BC_mid = bnd_mids[best:best + 1]
             interpolate_BC_location_multiscale(mesh_list[:-1], edge_BC_mid)
         else:
@@ -364,6 +470,8 @@ def create_mesh_template_pkl(
     
     # Step 9: Create torch_geometric Data object
     print("\n9. Creating torch_geometric Data object...")
+    import torch
+    from torch_geometric.data import Data
     data = Data()
     
     # Properties
@@ -397,10 +505,10 @@ def create_mesh_template_pkl(
         # data.node_BC = data.node_BC[:n_bc_finest]
         # data.edge_BC_length = data.edge_BC_length[:n_bc_finest]
         # data.finest_offset = int(mesh.face_ptr[0])
-        finest_mesh_for_bc = mesh.meshes[-1]
+        finest_mesh_for_bc = mesh.meshes[0]
         n_bc_finest = len(finest_mesh_for_bc.ghost_cells_ids)
-        data.node_BC = data.node_BC[-n_bc_finest:]
-        data.edge_BC_length = data.edge_BC_length[-n_bc_finest:]
+        data.node_BC = data.node_BC[:n_bc_finest]
+        data.edge_BC_length = data.edge_BC_length[:n_bc_finest]
 
     # Outflow ghost cells: in this SFINCS model ALL ghost cells are outflow (mirrored
     # across the msk==3 boundary) — there is no msk==2 inflow boundary (inflow comes
@@ -478,6 +586,18 @@ def create_mesh_template_from_pol(polygon_path, xyz_path, output_pkl_path,
             number_of_multiscales-1 coarser gmsh meshes are created.
     """
     import pickle
+    from graph_creation import (
+        create_gmesh,
+        create_simple_grid_mesh,
+        Mesh,
+        MultiscaleMesh,
+        find_face_BC,
+        interpolate_BC_location_multiscale,
+        pool_multiscale_attributes,
+        update_ghost_cells_attributes,
+        add_ghost_cells_mesh,
+        add_ghost_cells_attributes,
+    )
 
     print(f"\n=== Creating Mesh Template (from polygon + .xyz) ===")
     print(f"Polygon: {polygon_path}")
@@ -546,14 +666,15 @@ def create_mesh_template_from_pol(polygon_path, xyz_path, output_pkl_path,
         if sfincs_map_nc:
             # SFINCS BC cells (msk==3) lie at the SFINCS grid boundary, which is in the
             # interior of the meshkernel polygon. Seed the coarser-mesh BC search from the
-            # finest meshkernel mesh's polygon boundary edges instead.
+            # finest meshkernel mesh's polygon boundary edges instead, using the REAL known
+            # outflow location (msk==3) to pick the right one, not a geometric guess.
             mk_finest = mesh_list[-2]
             bnd_mids = mk_finest.node_xy[mk_finest.boundary_edges].mean(1)
             valid = np.isfinite(bnd_mids).all(axis=1)
             bnd_mids = bnd_mids[valid]
-            centroid = mk_finest.face_xy.mean(0)
-            dists = np.linalg.norm(bnd_mids - centroid, axis=1)
-            best = int(dists.argmax())
+            real_bc_xy = finest_mesh.face_xy[finest_mesh.face_BC].mean(0, keepdims=True)
+            dists = np.linalg.norm(bnd_mids - real_bc_xy, axis=1)
+            best = int(dists.argmin())
             edge_BC_mid = bnd_mids[best:best+1]
             interpolate_BC_location_multiscale(mesh_list[:-1], edge_BC_mid)
         else:
@@ -592,6 +713,8 @@ def create_mesh_template_from_pol(polygon_path, xyz_path, output_pkl_path,
         DEM = mesh.DEM.copy()
         DEM, WD, VX, VY = add_ghost_cells_attributes(mesh, DEM, WD, VX, VY)
 
+    import torch
+    from torch_geometric.data import Data
     data = Data()
     data.DEM = torch.FloatTensor(DEM)
     data.WD = torch.FloatTensor(WD)
@@ -617,10 +740,10 @@ def create_mesh_template_from_pol(polygon_path, xyz_path, output_pkl_path,
         # data.node_BC = data.node_BC[:n_bc_finest]
         # data.edge_BC_length = data.edge_BC_length[:n_bc_finest]
         # data.finest_offset = int(mesh.face_ptr[0])
-        finest_mesh_for_bc = mesh.meshes[-1]
+        finest_mesh_for_bc = mesh.meshes[0]
         n_bc_finest = len(finest_mesh_for_bc.ghost_cells_ids)
-        data.node_BC = data.node_BC[-n_bc_finest:]
-        data.edge_BC_length = data.edge_BC_length[-n_bc_finest:]
+        data.node_BC = data.node_BC[:n_bc_finest]
+        data.edge_BC_length = data.edge_BC_length[:n_bc_finest]
 
     # Outflow ghost cells: in this SFINCS model ALL ghost cells are outflow (mirrored
     # across the msk==3 boundary) — there is no msk==2 inflow boundary (inflow comes
