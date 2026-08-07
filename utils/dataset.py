@@ -131,7 +131,7 @@ def get_node_features(data, scalers=None, slopes=False, slope=False,
     return node_features
 
 def get_edge_features(data, scalers=None, edge_length=False, edge_relative_distance=False,
-                      edge_slope=False, device='cpu'):
+                      edge_slope=False, edge_weir_crest=False, device='cpu'):
     '''Return the static edge features
 
     data: torch_geometric.data.data.Data
@@ -145,6 +145,9 @@ def get_edge_features(data, scalers=None, edge_length=False, edge_relative_dista
         edge_length: distance among two cell centers (default=True)
         edge_relative_distance: relative distance among two cell centers (default=False)
         edge_slope: slope across two neighbouring cells (default=True)
+        edge_weir_crest: barrier (weir/levee) crest height above local terrain,
+            0 where there is no structure - see
+            convert_sfincs_to_pkl_marg.compute_edge_weir_crest_offset (default=False)
     '''
     if scalers is None:
         scalers = {'edge_length_scaler' : None,
@@ -184,6 +187,18 @@ def get_edge_features(data, scalers=None, edge_length=False, edge_relative_dista
                                   for i in range(data.mesh.num_meshes)])
         else:
             edge_features['edge_slope'] = process_attr(data.edge_slope, scaler=scalers['edge_slope_scaler'], device=device)
+
+    if edge_weir_crest:
+        _weir_crest = getattr(data, 'edge_weir_crest', None)
+        if _weir_crest is None:
+            _weir_crest = torch.zeros_like(data.face_distance)
+        if isinstance(data.mesh, MultiscaleMesh):
+            edge_features['edge_weir_crest'] = torch.cat(
+                [process_attr(_weir_crest[data.edge_ptr[i]:data.edge_ptr[i+1]], device=device, scaler=None)
+                 for i in range(data.mesh.num_meshes)])
+        else:
+            edge_features['edge_weir_crest'] = process_attr(_weir_crest, scaler=None, device=device)
+        del _weir_crest
 
     selected_edge_features = locals()
 
@@ -252,8 +267,11 @@ def create_data_attr(datasets, scalers=None, temporal_res=60,
         ['slopes', 'slope', 'area', 'DEM']}
 
     selected_edge_features = {
-        key:selected_features[key] for key in 
+        key:selected_features[key] for key in
         ['edge_length', 'edge_relative_distance', 'edge_slope']}
+    # .get(), not selected_features[...]: older configs' YAML selected_edge_features
+    # section predates this key entirely and would KeyError on a direct lookup.
+    selected_edge_features['edge_weir_crest'] = selected_features.get('edge_weir_crest', False)
 
     for data in datasets:
         temp = process_WD_VX_VY(data, temporal_res=temporal_res, scalers=scalers, device=device)

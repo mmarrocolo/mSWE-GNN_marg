@@ -100,6 +100,9 @@ def _run_convert(dataset_name, sim_dir, only_var=None, max_attempts=3):
         '--src-file', os.path.join(sim_dir, 'sfincs.src'),
         '--dis-file', os.path.join(sim_dir, 'sfincs.dis'),
     ]
+    weir_path = os.path.join(sim_dir, 'sfincs.weir')
+    if os.path.exists(weir_path):
+        args += ['--weir-file', weir_path]
     if only_var is not None:
         args += ['--only-var', only_var]
     env = os.environ.copy()
