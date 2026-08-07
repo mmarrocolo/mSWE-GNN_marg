@@ -8,6 +8,14 @@
 !database/raw_datasets_ahr/Simulations/ahr_river_v03_Marg_additionalsrc_cutpolygon/sfincs_his.nc
 !database/raw_datasets_ahr/Simulations/ahr_river_v03_Marg_additionalsrc_velocity_100m_cutpolygon/sfincs_map.nc
 !database/raw_datasets_ahr/Simulations/ahr_river_v03_Marg_additionalsrc_velocity_100m_cutpolygon/gis/dep.tif
+# Structures (levee/thin-dam) simulations - glob covers all warmstart_infra_* folders so
+# new ones don't need a new exception line each time (see run_convert_structures.py)
+!database/raw_datasets_ahr/Simulations/ahr_river_v03_Marg_additionalsrc_velocity_100m_cutpolygon_warmstart_infra_*/sfincs_map.nc
+# General rule: every simulation's sfincs_map.nc is needed by convert_sfincs_to_pkl_marg.py,
+# so track it everywhere rather than adding a one-off exception per new simulation folder
+# (the two gaps above - structures sims, then the bc-augmentation reconversion sims -
+# both traced back to exactly this omission). ~280MB total as of 2026-08-07, acceptable.
+!database/raw_datasets_ahr/Simulations/*/sfincs_map.nc
 __pycache__
 *.pyc
 lightning_logs
