@@ -166,6 +166,134 @@ def find_nearest_mesh_nodes(source_xy, face_xy):
     return indices.astype(np.int32)
 
 
+def parse_weir_file(weir_path):
+    """Read a SFINCS weir file: one or more named polylines, each point as
+    "x y crest_z discharge_coef". Returns a list of dicts:
+        {'name': str, 'xy': [N,2] array, 'z': [N] array}
+    """
+    with open(weir_path, encoding='latin-1') as f:
+        lines = [l.strip() for l in f if l.strip()]
+
+    weirs = []
+    i = 0
+    while i < len(lines):
+        name = lines[i]
+        i += 1
+        n_points, n_cols = (int(v) for v in lines[i].split()[:2])
+        i += 1
+        pts = np.array([[float(v) for v in lines[i + k].split()[:n_cols]] for k in range(n_points)])
+        i += n_points
+        weirs.append({'name': name, 'xy': pts[:, :2], 'z': pts[:, 2]})
+    return weirs
+
+
+def compute_edge_weir_crest_offset(data, weirs, tol=None):
+    """Per-(dual-edge) "barrier height above local terrain" feature for one
+    structures scenario, aligned to data.edge_index / data.face_distance /
+    data.edge_slope (same flat, per-scale-concatenated ordering built by
+    MultiscaleMesh.stack_meshes).
+
+    For every primal mesh edge that coincides with one of this scenario's own
+    weir lines (embedded as a constrained CDT edge when the shared structures
+    template was built), the dual edge connecting the two faces sharing that
+    primal edge gets max(0, crest_z - avg(DEM of the two faces)), i.e. how
+    much higher the crest is than the surrounding terrain (0 = no barrier).
+    Every other dual edge - including the entirety of edge_weir_crest for
+    events with no structures at all - stays 0.
+
+    data: Data object with data.mesh a MultiscaleMesh built from the shared
+        structures template. build_output_data() leaves data.DEM/data.mesh
+        untouched (deepcopy of the template), so this reads that shared
+        geometry directly - only the returned array is scenario-specific.
+    weirs: list of dicts from parse_weir_file, already in the mesh's CRS.
+    tol: max distance [m] from a mesh-edge midpoint to a weir line to count
+        as "on" the structure. Defaults to half the finest scale's median
+        edge length (CDT-embedded edges sit almost exactly on the line, so
+        this is generous headroom, not a fuzzy-matching threshold).
+
+    Only the finest scale (the real SFINCS grid) gets nonzero values - a
+    500-2000m coarse cell can't meaningfully represent a 2-20m barrier, and
+    using a distance tolerance loose enough for coarse edges risks a coarse
+    edge nowhere near the actual crossing falsely matching the line, then
+    reading a km-averaged DEM as the "local terrain" (tried this: produced a
+    242m "offset" at the coarsest scale on a 2m-crest scenario). Coarser
+    scales still see the barrier indirectly through the model's existing
+    coarse<->fine pooling edges during training.
+    """
+    from shapely.geometry import LineString, Point
+
+    mesh = data.mesh
+    assert hasattr(mesh, 'meshes'), "compute_edge_weir_crest_offset expects a MultiscaleMesh"
+
+    lines_arcs = []
+    for w in weirs:
+        if len(w['xy']) < 2:
+            continue
+        seg = np.linalg.norm(np.diff(w['xy'], axis=0), axis=1)
+        arc = np.concatenate([[0.0], np.cumsum(seg)])
+        lines_arcs.append((LineString(w['xy']), arc, w['z']))
+
+    if not lines_arcs:
+        return np.zeros(data.edge_index.shape[1], dtype=np.float32)
+
+    dem = data.DEM.numpy() if torch.is_tensor(data.DEM) else np.asarray(data.DEM)
+    node_ptr = data.node_ptr.numpy() if torch.is_tensor(data.node_ptr) else np.asarray(data.node_ptr)
+
+    finest_idx = max(range(len(mesh.meshes)), key=lambda i: mesh.meshes[i].num_faces)
+
+    per_scale_offsets = []
+    for scale_i, m in enumerate(mesh.meshes):
+        n_edges_dual = m.dual_edge_index.shape[1]
+        offset = np.zeros(n_edges_dual, dtype=np.float32)
+
+        if scale_i != finest_idx:
+            per_scale_offsets.append(offset)
+            continue
+
+        this_tol = tol if tol is not None else 0.5 * float(np.median(m.edge_length))
+        local_dem = dem[node_ptr[scale_i]: node_ptr[scale_i + 1]]
+
+        # primal edge (a, b) -> [face_i, face_j] sharing it, from face loops
+        edge_to_faces = {}
+        pos = 0
+        for face_idx, n_nodes in enumerate(m.nodes_per_face):
+            face_nodes = m.face_nodes[pos: pos + n_nodes]
+            pos += n_nodes
+            for k in range(n_nodes):
+                a, b = int(face_nodes[k]), int(face_nodes[(k + 1) % n_nodes])
+                edge_to_faces.setdefault(tuple(sorted((a, b))), []).append(face_idx)
+
+        # sorted-face-pair -> every directed dual-edge column representing it
+        # (dual_edge_index is made undirected, so both (f0,f1) and (f1,f0) exist)
+        dual_lookup = {}
+        for col, (f0, f1) in enumerate(m.dual_edge_index.T):
+            dual_lookup.setdefault(tuple(sorted((int(f0), int(f1)))), []).append(col)
+
+        for (a, b), faces in edge_to_faces.items():
+            if len(faces) != 2:
+                continue
+            mid = Point(0.5 * (m.node_xy[a] + m.node_xy[b]))
+
+            best_z, best_d = None, this_tol
+            for line, arc, z_vals in lines_arcs:
+                d = line.distance(mid)
+                if d < best_d:
+                    s = line.project(mid)
+                    best_d, best_z = d, float(np.interp(s, arc, z_vals))
+
+            if best_z is None:
+                continue
+
+            f0, f1 = faces
+            crest_offset = max(0.0, best_z - 0.5 * (local_dem[f0] + local_dem[f1]))
+            for col in dual_lookup.get(tuple(sorted((f0, f1))), []):
+                offset[col] = crest_offset
+
+        per_scale_offsets.append(offset)
+
+    return np.concatenate(per_scale_offsets)
+
+
 def build_output_data(template_data, WD, VX, VY,
                       map_times_s=None, src_xy=None, dis_times_s=None, discharge=None):
     data = copy.deepcopy(template_data)
@@ -243,6 +371,10 @@ def main():
     parser.add_argument("--vy-var", default=None, help="Optional velocity-y variable name")
     parser.add_argument("--src-file", default=None, help="SFINCS source file (sfincs.src) with 7 source point locations")
     parser.add_argument("--dis-file", default=None, help="SFINCS discharge file (sfincs.dis) with time series")
+    parser.add_argument("--weir-file", default=None,
+                         help="SFINCS weir file (sfincs.weir) with crest elevations. If given, adds "
+                              "edge_weir_crest to the output Data object (see compute_edge_weir_crest_offset). "
+                              "Omit for simulations with no structures.")
     parser.add_argument("--only-var", choices=["WD", "VX", "VY"], default=None,
                          help="Compute only this variable's interpolation (the other two are filled with "
                               "zeros). Lets a caller split WD/VX/VY across separate process invocations - "
@@ -355,6 +487,15 @@ def main():
     data_out = build_output_data(template_data, WD=WD, VX=VX, VY=VY,
                                  map_times_s=map_times_s, src_xy=src_xy,
                                  dis_times_s=dis_times_s, discharge=discharge)
+
+    if args.weir_file:
+        print(f"Reading weir crest elevations from {args.weir_file}...")
+        weirs = parse_weir_file(args.weir_file)
+        print(f"  {len(weirs)} weir line(s) found.")
+        data_out.edge_weir_crest = torch.FloatTensor(compute_edge_weir_crest_offset(data_out, weirs))
+        n_tagged = int((data_out.edge_weir_crest > 0).sum())
+        print(f"  Tagged {n_tagged} dual edges with a nonzero crest offset "
+              f"(max {float(data_out.edge_weir_crest.max()):.2f} m).")
 
     train_dir = os.path.join(args.out_root, "train")
     test_dir = os.path.join(args.out_root, "test")
