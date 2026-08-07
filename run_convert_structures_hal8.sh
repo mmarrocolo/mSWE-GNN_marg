@@ -2,7 +2,7 @@
 #SBATCH --job-name=mswe-gnn-convert-structures
 #SBATCH --output=/p/11210554-dtc-hydrology-next/marrocol/mSWE-GNN_marg/logs/%j_convert_structures.out
 #SBATCH --error=/p/11210554-dtc-hydrology-next/marrocol/mSWE-GNN_marg/logs/%j_convert_structures.err
-#SBATCH --partition=normal
+#SBATCH --partition=4vcpu
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem-per-cpu=7500M
