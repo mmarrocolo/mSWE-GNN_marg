@@ -1,0 +1,85 @@
+# Single-sim, hid_features=64, fine-tuned starting from results/finetuned_dk15.h5
+# (pretrained weights, not random init). Identical to
+# config_best_sweep_hid64_scratch.yaml except saved_model, for a clean
+# scratch-vs-pretrained comparison. K=[4,4,4,4,4,4,4] verified directly from the
+# checkpoint's own weights (see config_best_sweep_hid64_scratch.yaml comment) -
+# required for the checkpoint to actually load; finetune_ahr.py silently falls back
+# to training from scratch on any architecture mismatch (catches the RuntimeError),
+# so a wrong K here would NOT error, it would just quietly duplicate the scratch run.
+# Check the job log's opening lines for "Loading pre-trained weights from:" with no
+# following "Architecture mismatch" message to confirm it actually loaded.
+
+dataset_parameters:
+  dataset_folder    : 'database/datasets'
+  temporal_res      : 60
+  train_dataset_name: 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart'
+  train_size        : 1
+  val_prcnt         : 0
+  test_dataset_name : 'ahr_river_v03_marg_additionalsrc_velocity_100m_warmstart'
+  seed              : 0
+
+scalers:
+  DEM_scaler        : 'standard'
+  slope_scaler      : null
+  area_scaler       : 'standard'
+  edge_length_scaler: 'standard'
+  edge_slope_scaler : null
+  WD_scaler         : null
+  V_scaler          : null
+
+selected_node_features:
+  slopes        : False
+  slope         : False
+  area          : True
+  DEM           : True
+
+selected_edge_features:
+  edge_length           : True
+  edge_relative_distance: False
+  edge_slope            : False
+
+temporal_dataset_parameters:
+  rollout_steps : 5
+  previous_t    : 3
+  time_start    : 0
+  time_stop     : -1
+
+models:
+  model_type              : 'MSGNN'
+  hid_features            : 64
+  mlp_layers              : 3
+  seed                    : 666
+  learned_residuals       : True
+  mlp_activation          : 'prelu'
+  gnn_activation          : 'tanh'
+  edge_mlp                : True
+  normalize               : True
+  with_filter_matrix      : True
+  with_gradient           : True
+  with_WL                 : True
+  K                       : [4, 4, 4, 4, 4, 4, 4]
+  learned_pooling         : False
+  skip_connections        : True
+
+trainer_options:
+  type_loss             : 'RMSE'
+  only_where_water      : True
+  batch_size            : 4
+  conservation          : 0
+  velocity_scaler       : 7
+  shallow_weight        : 5
+  shallow_threshold     : 0.30
+  curriculum_epoch      : 15
+  patience              : 300
+  max_epochs            : 1000
+
+lr_info:
+  learning_rate   : 0.0005177909168244793
+  weight_decay    : 0
+  scheduler       : 'cosine'
+  T_max           : 1000
+  eta_min         : 1.0e-6
+  gamma           : 0.7
+  step_size       : 10
+
+saved_model: 'results/finetuned_dk15.h5'
