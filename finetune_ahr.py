@@ -56,6 +56,15 @@ def main():
 
     cfg = read_config(args.config)
 
+    # Flat, un-dotted keys - fix_dict_in_config only special-cases keys containing
+    # '.', so these pass through as plain top-level wandb.config fields. This is
+    # what actually answers "which hal8 job produced this run": before this, the
+    # only link was matching wandb's offline-run folder timestamp against a job's
+    # sacct start time and its logs/<jobid>_finetune.out Config:/Output: lines by
+    # hand. Now it's directly filterable/visible as a column in the wandb run table.
+    cfg['slurm_job_id'] = os.environ.get('SLURM_JOB_ID', '')
+    cfg['config_file'] = args.config
+
     partition = os.environ.get('SLURM_JOB_PARTITION', '').removeprefix('gpu-')
     # run_name is deferred until after sweep overrides are applied so it reflects actual params
     wandb.init(project="mswe-gnn-ahr-finetune", config=cfg)
@@ -64,7 +73,8 @@ def main():
 
     rollout_steps = config['temporal_dataset_parameters']['rollout_steps']
     hid_features  = config['models']['hid_features']
-    run_name = f"rollout{rollout_steps}_hid{hid_features}" + (f"_{partition}" if partition else "")
+    job_suffix = f"_job{config['slurm_job_id']}" if config['slurm_job_id'] else ''
+    run_name = f"rollout{rollout_steps}_hid{hid_features}" + (f"_{partition}" if partition else "") + job_suffix
     wandb.run.name = run_name
     wandb_logger = WandbLogger(project="mswe-gnn-ahr-finetune", name=run_name, log_model=True)
 
