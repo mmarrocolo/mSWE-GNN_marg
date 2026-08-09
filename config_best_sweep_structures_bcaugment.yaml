@@ -72,7 +72,7 @@ trainer_options:
   shallow_weight        : 5
   shallow_threshold     : 0.30
   curriculum_epoch      : 15
-  patience              : 300
+  patience              : 50
   max_epochs            : 1000
   validate_on_test      : True
   multiscale_loss_scaler: [5, 1, 1, 1]
