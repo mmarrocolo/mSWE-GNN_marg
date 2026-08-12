@@ -349,12 +349,19 @@ def create_model_dataset(train_dataset_name='grid', train_size=100, val_prcnt=0.
         
     # Normalization using only training
     scalers = get_scalers(train_dataset, scalers)
-    
+
+    # val_prcnt == 0 makes val_dataset the same list object as train_dataset (see above) - processing
+    # it through create_data_attr a second time would produce byte-identical output at the cost of a
+    # second full copy of the (possibly large, multi-sim) processed dataset in memory. Capture the
+    # identity check before train_dataset gets reassigned below, then just reuse the result.
+    val_is_train = val_dataset is train_dataset
+
     # Create x, edge_attr, y
     train_dataset = create_data_attr(train_dataset, scalers=scalers, device=device, **dataset_parameters)
-    val_dataset = create_data_attr(val_dataset, scalers=scalers, device=device, **dataset_parameters)
+    val_dataset = train_dataset if val_is_train else \
+        create_data_attr(val_dataset, scalers=scalers, device=device, **dataset_parameters)
     test_dataset = create_data_attr(test_dataset, scalers=scalers, device=device, **dataset_parameters)
-    
+
     return train_dataset, val_dataset, test_dataset, scalers
 
 def aggregate_WD_V(WD, V, init_time):
